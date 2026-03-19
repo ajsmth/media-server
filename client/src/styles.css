@@ -1,0 +1,104 @@
+:root {
+  color: #f3efe6;
+  background:
+    radial-gradient(circle at top, rgba(238, 157, 77, 0.28), transparent 35%),
+    linear-gradient(180deg, #15110f 0%, #090909 100%);
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button {
+  font: inherit;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px 16px;
+}
+
+.panel {
+  width: min(720px, 100%);
+  padding: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  background: rgba(18, 18, 18, 0.72);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: #f3b37a;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.75rem;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(2rem, 6vw, 3.5rem);
+  line-height: 0.95;
+}
+
+.description {
+  max-width: 42rem;
+  color: rgba(243, 239, 230, 0.72);
+}
+
+.file-list {
+  list-style: none;
+  margin: 24px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.file-button {
+  width: 100%;
+  border: 0;
+  border-radius: 16px;
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.file-button:hover,
+.file-button.active {
+  transform: translateY(-1px);
+  background: rgba(243, 179, 122, 0.18);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
+}
+
+@media (max-width: 640px) {
+  .panel {
+    padding: 24px;
+    border-radius: 18px;
+  }
+
+  .file-button {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+}

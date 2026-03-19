@@ -1,16 +1,18 @@
 {
   "name": "media-server",
-  "version": "1.0.0",
-  "main": "server.js",
+  "private": true,
+  "workspaces": [
+    "client",
+    "server"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
-  },
-  "author": "",
-  "license": "ISC",
-  "description": "",
-  "dependencies": {
-    "express": "^5.2.1"
+    "build": "yarn workspace media-server-backend build && yarn workspace media-server-client build",
+    "check": "yarn workspace media-server-backend lint && yarn workspace media-server-backend build && yarn workspace media-server-client build",
+    "dev:client": "yarn workspace media-server-client dev",
+    "dev:server": "yarn workspace media-server-backend dev",
+    "format": "yarn workspace media-server-backend format && yarn workspace media-server-client format",
+    "lint": "yarn workspace media-server-backend lint && yarn workspace media-server-client lint",
+    "start": "yarn workspace media-server-backend start"
   },
   "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }

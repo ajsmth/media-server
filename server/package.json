@@ -1,0 +1,27 @@
+{
+  "name": "media-server-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "dev": "tsx watch src/server.ts",
+    "format": "prettier --write .",
+    "lint": "eslint .",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.22.0",
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.6.0",
+    "eslint": "^9.22.0",
+    "globals": "^16.0.0",
+    "prettier": "^3.5.3",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.2",
+    "typescript-eslint": "^8.26.1"
+  }
+}

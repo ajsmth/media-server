@@ -3,6 +3,7 @@
 # dependencies
 node_modules/
 media/
+dist/
 
 # Expo
 .expo/
