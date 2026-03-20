@@ -23,7 +23,7 @@ export const config = {
   serverHost: process.env.SERVER_HOST ?? "192.168.1.75",
   playbackHost: process.env.PLAYBACK_HOST ?? process.env.SERVER_HOST ?? "192.168.1.75",
   serverPort: toNumber(process.env.SERVER_PORT, 3000),
-  nebulaIp: process.env.NEBULA_IP ?? "192.168.1.69",
+  nebulaIp: process.env.NEBULA_IP ?? "192.168.1.76",
   adbPort: toNumber(process.env.ADB_PORT, 5555),
   vlcPackage: "org.videolan.vlc",
   vlcAppActivity: "org.videolan.vlc.StartActivity",
