@@ -6,6 +6,7 @@ type AndroidDeviceClientOptions = {
 };
 
 type ShellResult = {
+  command: string;
   stdout: string;
   stderr: string;
 };
@@ -94,12 +95,19 @@ export class AndroidDeviceClient {
 
   async runShellCommand(command: string): Promise<ShellResult> {
     await this.connect();
+    console.log(`[adb] running on ${this.getDeviceSerial()}: ${command}`);
     const deviceClient = this.adbClient.getDevice(this.getDeviceSerial());
     const stream = await deviceClient.shell(command);
     const output = await Utils.readAll(stream);
     const stdout = output.toString().trim();
+    console.log(
+      stdout
+        ? `[adb] response for ${command}: ${stdout}`
+        : `[adb] response for ${command}: <no output>`,
+    );
 
     return {
+      command,
       stdout,
       stderr: "",
     };

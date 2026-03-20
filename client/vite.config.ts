@@ -10,6 +10,7 @@ export default defineConfig({
       "/files": "http://127.0.0.1:3000",
       "/play": "http://127.0.0.1:3000",
       "/torrents": "http://127.0.0.1:3000",
+      "/vlc": "http://127.0.0.1:3000",
       "/media": "http://127.0.0.1:3000",
     },
   },

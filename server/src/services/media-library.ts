@@ -33,6 +33,23 @@ export class MediaLibrary {
     }
   }
 
+  async resolveExistingFileByBaseName(baseName: string): Promise<string | null> {
+    const playableFiles = await this.listPlayableFiles();
+    const matches = playableFiles.filter(
+      (file) => path.basename(file) === baseName,
+    );
+
+    if (matches.length === 0) {
+      return null;
+    }
+
+    if (matches.length > 1) {
+      throw new Error(`Multiple media files share the name ${baseName}`);
+    }
+
+    return this.resolveExistingFile(matches[0]);
+  }
+
   async ensureMediaDirectories(): Promise<void> {
     await fs.mkdir(this.mediaDir, { recursive: true });
   }

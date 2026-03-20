@@ -33,6 +33,26 @@ type AdbStatus = {
   lastError: string | null;
 };
 
+type PlayResponse = {
+  status: "playing";
+  file: string;
+  launch: {
+    mediaUrl: string;
+    launch: {
+      command: string;
+      stdout: string;
+    };
+  };
+};
+
+type LaunchVlcResponse = {
+  status: "launched";
+  launch: {
+    command: string;
+    stdout: string;
+  };
+};
+
 export default function App() {
   const [files, setFiles] = useState<string[]>([]);
   const [selectedNebulaFile, setSelectedNebulaFile] = useState<string | null>(null);
@@ -48,6 +68,9 @@ export default function App() {
   const [adbStatus, setAdbStatus] = useState<AdbStatus | null>(null);
   const [adbError, setAdbError] = useState<string | null>(null);
   const [isConnectingAdb, setIsConnectingAdb] = useState(false);
+  const [isLaunchingVlc, setIsLaunchingVlc] = useState(false);
+  const [nebulaFeedback, setNebulaFeedback] = useState<string | null>(null);
+  const [nebulaError, setNebulaError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -160,14 +183,62 @@ export default function App() {
 
   async function playFile(file: string) {
     setSelectedNebulaFile(file);
+    setNebulaError(null);
+    setNebulaFeedback(`Sending ${file} to VLC...`);
 
-    await fetch("/play", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ file }),
-    });
+    try {
+      const response = await fetch("/play", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ file }),
+      });
+
+      if (!response.ok) {
+        const message = await readErrorMessage(response, "Failed to launch VLC");
+        setNebulaError(message);
+        setNebulaFeedback(null);
+        return;
+      }
+
+      const payload = (await response.json()) as PlayResponse;
+      const mediaLaunchOutput = payload.launch.launch.stdout || "No output from media launch.";
+      setNebulaFeedback(
+        `Sent ${payload.file} to VLC at ${payload.launch.mediaUrl}. ${mediaLaunchOutput}`,
+      );
+    } catch (error) {
+      setNebulaError(error instanceof Error ? error.message : "Failed to launch VLC");
+      setNebulaFeedback(null);
+    }
+  }
+
+  async function launchVlc() {
+    setIsLaunchingVlc(true);
+    setNebulaError(null);
+    setNebulaFeedback("Launching VLC app...");
+
+    try {
+      const response = await fetch("/vlc/launch", {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const message = await readErrorMessage(response, "Failed to launch VLC");
+        setNebulaError(message);
+        setNebulaFeedback(null);
+        return;
+      }
+
+      const payload = (await response.json()) as LaunchVlcResponse;
+      const launchOutput = payload.launch.stdout || "No output from app launch.";
+      setNebulaFeedback(`Launched VLC app. ${launchOutput}`);
+    } catch (error) {
+      setNebulaError(error instanceof Error ? error.message : "Failed to launch VLC");
+      setNebulaFeedback(null);
+    } finally {
+      setIsLaunchingVlc(false);
+    }
   }
 
   async function submitTorrent(event: React.FormEvent<HTMLFormElement>) {
@@ -330,6 +401,14 @@ export default function App() {
             >
               {isConnectingAdb ? "Connecting..." : "Connect"}
             </button>
+            <button
+              className="secondary-button"
+              disabled={isLaunchingVlc}
+              onClick={() => void launchVlc()}
+              type="button"
+            >
+              {isLaunchingVlc ? "Launching..." : "Launch VLC"}
+            </button>
           </div>
         </section>
 
@@ -421,6 +500,8 @@ export default function App() {
         {loadState === "error" && (
           <p>Unable to load the media library from the backend.</p>
         )}
+        {nebulaFeedback && <p className="download-meta">{nebulaFeedback}</p>}
+        {nebulaError && <p className="status-message error">{nebulaError}</p>}
 
         {selectedBrowserFile && (
           <section className="browser-player">

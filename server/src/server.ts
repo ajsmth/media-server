@@ -15,6 +15,30 @@ type PlayRequestBody = {
   file?: string;
 };
 
+type PlayResponse = {
+  status: "playing";
+  file: string;
+  launch: {
+    mediaUrl: string;
+    launch: {
+      command: string;
+      stdout: string;
+    };
+  };
+};
+
+type LaunchVlcResponse = {
+  status: "launched";
+  launch: {
+    command: string;
+    stdout: string;
+  };
+};
+
+type ErrorResponse = {
+  error: string;
+};
+
 type CreateTorrentRequestBody = {
   magnetLink?: string;
 };
@@ -45,12 +69,30 @@ const androidDeviceClient = new AndroidDeviceClient({
 });
 const vlcRemoteController = new VlcRemoteController(androidDeviceClient, {
   packageName: config.vlcPackage,
-  activityName: config.vlcActivity,
+  appActivityName: config.vlcAppActivity,
+  playbackActivityName: config.vlcPlaybackActivity,
 });
 
 app.use(express.json());
 app.use("/media", express.static(config.mediaDir));
 app.use(express.static(config.clientDistDir));
+
+app.get("/media/:fileName", async (req, res, next) => {
+  try {
+    const existingFile = await mediaLibrary.resolveExistingFileByBaseName(
+      req.params.fileName,
+    );
+
+    if (!existingFile) {
+      res.status(404).json({ error: "File not found" });
+      return;
+    }
+
+    res.sendFile(existingFile);
+  } catch (error) {
+    next(error);
+  }
+});
 
 app.get("/adb/status", async (_req, res, next) => {
   try {
@@ -90,7 +132,7 @@ app.get("/files", async (_req, res, next) => {
 app.post(
   "/play",
   async (
-    req: express.Request<Record<string, never>, unknown, PlayRequestBody>,
+    req: express.Request<Record<string, never>, PlayResponse | ErrorResponse, PlayRequestBody>,
     res,
     next,
   ) => {
@@ -110,14 +152,30 @@ app.post(
       }
 
       const fileUrl = new URL(
-        `/media/${mediaLibrary.toPublicMediaPath(file)}`,
-        `http://${config.serverHost}:${config.serverPort}`,
+        `/media/${encodeURIComponent(path.basename(existingFile))}`,
+        `http://${config.playbackHost}:${config.serverPort}`,
       );
 
-      console.log(`Launching VLC with ${fileUrl.toString()}`);
-      await vlcRemoteController.playMediaUrl(fileUrl.toString());
+      console.log(`Sending VLC media intent for ${fileUrl.toString()}`);
+      const launch = await vlcRemoteController.playMediaUrl(fileUrl.toString());
+      console.log("[vlc] media launch output:", launch.launch.stdout || "<no output>");
 
-      res.json({ status: "playing", file });
+      res.json({ status: "playing", file, launch });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+app.post(
+  "/vlc/launch",
+  async (_req: express.Request<Record<string, never>, LaunchVlcResponse>, res, next) => {
+    try {
+      console.log("Launching VLC app");
+      const launch = await vlcRemoteController.launchApp();
+      console.log("[vlc] app launch output:", launch.launch.stdout || "<no output>");
+
+      res.json({ status: "launched", launch: launch.launch });
     } catch (error) {
       next(error);
     }
