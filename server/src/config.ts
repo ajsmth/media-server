@@ -17,6 +17,8 @@ const toNumber = (value: string | undefined, fallback: number): number => {
 export const config = {
   projectRoot,
   mediaDir: path.join(projectRoot, "media"),
+  incompleteDownloadsDir: path.join(projectRoot, "media", ".incomplete"),
+  browserMediaDir: path.join(projectRoot, "media", "browser"),
   clientDistDir: path.join(projectRoot, "client", "dist"),
   serverHost: process.env.SERVER_HOST ?? "192.168.1.66",
   serverPort: toNumber(process.env.SERVER_PORT, 3000),

@@ -6,8 +6,10 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      "/adb": "http://127.0.0.1:3000",
       "/files": "http://127.0.0.1:3000",
       "/play": "http://127.0.0.1:3000",
+      "/torrents": "http://127.0.0.1:3000",
       "/media": "http://127.0.0.1:3000",
     },
   },

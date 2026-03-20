@@ -58,6 +58,137 @@ h1 {
   color: rgba(243, 239, 230, 0.72);
 }
 
+.torrent-form,
+.downloads-section,
+.adb-card {
+  margin-top: 28px;
+}
+
+.field-label,
+.section-heading h2,
+.download-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.magnet-input {
+  width: 100%;
+  margin-top: 10px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.04);
+  resize: vertical;
+}
+
+.torrent-actions {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.primary-button,
+.secondary-button {
+  border: 0;
+  border-radius: 999px;
+  padding: 12px 18px;
+  color: inherit;
+  cursor: pointer;
+}
+
+.primary-button {
+  background: #f3b37a;
+  color: #17110c;
+  font-weight: 700;
+}
+
+.primary-button:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.secondary-button {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.status-pill {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 0.8rem;
+}
+
+.status-pill.connected {
+  background: rgba(93, 201, 126, 0.18);
+  color: #b5f3c7;
+}
+
+.section-heading,
+.download-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.section-heading {
+  margin-bottom: 12px;
+}
+
+.download-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.download-card {
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.download-meta,
+.status-message,
+.empty-state {
+  margin: 8px 0 0;
+  color: rgba(243, 239, 230, 0.7);
+}
+
+.status-message.error {
+  color: #ff9a8b;
+}
+
+.progress-track {
+  height: 10px;
+  margin-top: 12px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.progress-bar {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #f3b37a 0%, #ff7c58 100%);
+  transition: width 180ms ease;
+}
+
+.browser-player {
+  margin-top: 28px;
+}
+
+.player-frame {
+  width: 100%;
+  margin-top: 12px;
+  border-radius: 18px;
+  background: #000;
+}
+
 .file-list {
   list-style: none;
   margin: 24px 0 0;
@@ -66,14 +197,27 @@ h1 {
   gap: 12px;
 }
 
+.file-card {
+  padding: 16px 18px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.file-name-row {
+  font-weight: 600;
+}
+
+.file-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
 .file-button {
-  width: 100%;
+  flex: 1 1 0;
   border: 0;
   border-radius: 16px;
-  padding: 16px 18px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  padding: 12px 16px;
   color: inherit;
   background: rgba(255, 255, 255, 0.06);
   cursor: pointer;
@@ -96,9 +240,7 @@ h1 {
     border-radius: 18px;
   }
 
-  .file-button {
+  .file-actions {
     flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
   }
 }
