@@ -6,7 +6,14 @@ import type {
   LibrarySeasonRecord,
   LibraryShowRecord,
 } from "@media-server/shared";
-import { Folder, FolderOpen, LoaderCircle, RefreshCw } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Folder,
+  FolderOpen,
+  LoaderCircle,
+  RefreshCw,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,6 +32,7 @@ type ViewerNode = {
   label: string;
   depth: number;
   files: LibraryFileRecord[];
+  parentId: string | null;
   hasChildren?: boolean;
 };
 
@@ -40,6 +48,7 @@ function buildViewerNodes(
     label: "Shows",
     depth: 0,
     files: [],
+    parentId: null,
     hasChildren: shows.length > 0,
   });
 
@@ -49,6 +58,7 @@ function buildViewerNodes(
       label: show.title,
       depth: 1,
       files: [],
+      parentId: "shows",
       hasChildren: show.seasons.length > 0,
     });
 
@@ -62,6 +72,7 @@ function buildViewerNodes(
     label: "Movies",
     depth: 0,
     files: [],
+    parentId: null,
     hasChildren: movies.length > 0,
   });
 
@@ -71,6 +82,7 @@ function buildViewerNodes(
       label: movie.year ? `${movie.title} (${movie.year})` : movie.title,
       depth: 1,
       files: movie.files,
+      parentId: "movies",
     });
   }
 
@@ -79,6 +91,7 @@ function buildViewerNodes(
     label: "Other",
     depth: 0,
     files: [],
+    parentId: null,
     hasChildren: otherVideos.length > 0,
   });
 
@@ -88,6 +101,7 @@ function buildViewerNodes(
       label: group.title,
       depth: 1,
       files: group.files,
+      parentId: "other",
     });
   }
 
@@ -100,6 +114,7 @@ function buildSeasonNode(show: LibraryShowRecord, season: LibrarySeasonRecord): 
     label: `Season ${String(season.seasonNumber).padStart(2, "0")}`,
     depth: 2,
     files: season.episodes.flatMap((episode) => episode.files),
+    parentId: `show:${show.id}`,
   };
 }
 
@@ -147,6 +162,7 @@ export function LibraryPage() {
     [library.movies, library.shows, library.otherVideos],
   );
   const [selectedNodeId, setSelectedNodeId] = useState("");
+  const [expandedNodeIds, setExpandedNodeIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (!nodes.some((node) => node.id === selectedNodeId)) {
@@ -154,6 +170,55 @@ export function LibraryPage() {
       setSelectedNodeId(firstNodeWithFiles?.id ?? nodes[0]?.id ?? "");
     }
   }, [nodes, selectedNodeId]);
+
+  useEffect(() => {
+    const defaultExpanded = nodes
+      .filter((node) => node.hasChildren)
+      .map((node) => node.id);
+
+    setExpandedNodeIds((current) => {
+      const next = current.filter((nodeId) =>
+        nodes.some((node) => node.id === nodeId && node.hasChildren),
+      );
+
+      if (next.length > 0) {
+        return next;
+      }
+
+      return defaultExpanded;
+    });
+  }, [nodes]);
+
+  const expandedNodeIdSet = useMemo(
+    () => new Set(expandedNodeIds),
+    [expandedNodeIds],
+  );
+
+  const visibleNodes = useMemo(() => {
+    const nodeById = new Map(nodes.map((node) => [node.id, node]));
+
+    return nodes.filter((node) => {
+      let currentParentId = node.parentId;
+
+      while (currentParentId) {
+        if (!expandedNodeIdSet.has(currentParentId)) {
+          return false;
+        }
+
+        currentParentId = nodeById.get(currentParentId)?.parentId ?? null;
+      }
+
+      return true;
+    });
+  }, [expandedNodeIdSet, nodes]);
+
+  function toggleNode(nodeId: string) {
+    setExpandedNodeIds((current) =>
+      current.includes(nodeId)
+        ? current.filter((id) => id !== nodeId)
+        : [...current, nodeId],
+    );
+  }
 
   const libraryError = libraryQuery.isError
     ? libraryQuery.error instanceof Error
@@ -223,13 +288,18 @@ export function LibraryPage() {
         <Card className="bg-white/60">
           <CardHeader>
             <CardTitle>Folder viewer</CardTitle>
-            <CardDescription>
+          <CardDescription>
               Grouped by shows, seasons, movies, and other videos.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-1">
-            {nodes.map((node) => (
+            {visibleNodes.map((node) => (
               <div className="grid gap-2" key={node.id}>
+                {(() => {
+                  const isExpanded = expandedNodeIdSet.has(node.id);
+                  const showOpenFolder = node.hasChildren ? isExpanded : selectedNodeId === node.id;
+
+                  return (
                 <button
                   className={cn(
                     "flex items-center gap-2 rounded-[1rem] px-3 py-2 text-left text-sm transition-colors",
@@ -237,18 +307,36 @@ export function LibraryPage() {
                       ? "bg-primary/10 text-primary"
                       : "text-muted-foreground hover:bg-white/80 hover:text-foreground",
                   )}
-                  onClick={() => setSelectedNodeId(node.id)}
+                  onClick={() => {
+                    setSelectedNodeId(node.id);
+                    if (node.hasChildren) {
+                      toggleNode(node.id);
+                    }
+                  }}
                   style={{ paddingLeft: `${12 + node.depth * 16}px` }}
                   type="button"
                 >
-                  {selectedNodeId === node.id ? (
-                    <FolderOpen className="size-4 shrink-0" />
+                  {node.hasChildren ? (
+                    isExpanded ? (
+                      <ChevronDown className="size-4 shrink-0" />
+                    ) : (
+                      <ChevronRight className="size-4 shrink-0" />
+                    )
                   ) : (
-                    <Folder className="size-4 shrink-0" />
+                    <span className="size-5 shrink-0" />
                   )}
-                  <span className="truncate">{node.label}</span>
+                  <span className="flex min-w-0 flex-1 items-center gap-2">
+                    {showOpenFolder ? (
+                      <FolderOpen className="size-4 shrink-0" />
+                    ) : (
+                      <Folder className="size-4 shrink-0" />
+                    )}
+                    <span className="truncate">{node.label}</span>
+                  </span>
                   <span className="ml-auto text-xs opacity-70">{node.files.length}</span>
                 </button>
+                  );
+                })()}
 
                 {selectedNodeId === node.id ? (
                   node.files.length ? (
