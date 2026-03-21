@@ -1231,6 +1231,24 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@tanstack/query-core@npm:5.94.5":
+  version: 5.94.5
+  resolution: "@tanstack/query-core@npm:5.94.5"
+  checksum: 10c0/48e19d57b435160378dff9295d7f59fb84ae0e26fa9a087e124eb4091a89a42ae4c919f2e57515e3094d8c63a27c021ed27ddccbb53996c9759e7962d72a86c6
+  languageName: node
+  linkType: hard
+
+"@tanstack/react-query@npm:^5.66.9":
+  version: 5.94.5
+  resolution: "@tanstack/react-query@npm:5.94.5"
+  dependencies:
+    "@tanstack/query-core": "npm:5.94.5"
+  peerDependencies:
+    react: ^18 || ^19
+  checksum: 10c0/b36e47357e9616a642f1f9da3e8f04786773b3fd7abf1d6ae42f647fd6fc28c7864da51690c87c63264b78f15540c9f5680aff60fc43ffd9b2271aa610d8d06a
+  languageName: node
+  linkType: hard
+
 "@thaunknown/simple-peer@npm:^10.0.11, @thaunknown/simple-peer@npm:^10.0.8":
   version: 10.1.0
   resolution: "@thaunknown/simple-peer@npm:10.1.0"
@@ -3885,6 +3903,7 @@ __metadata:
   dependencies:
     "@eslint/js": "npm:^9.22.0"
     "@media-server/shared": "npm:1.0.0"
+    "@tanstack/react-query": "npm:^5.66.9"
     "@types/react": "npm:^19.1.2"
     "@types/react-dom": "npm:^19.1.2"
     "@vitejs/plugin-react": "npm:^4.4.1"

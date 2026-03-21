@@ -1,15 +1,12 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
-  AdbStatus,
-  LaunchVlcResponse,
   LibraryCatalogSnapshot,
-  LibraryCatalogStatus,
   LibraryFileRecord,
-  PlayResponse,
   TorrentDownloadRecord,
 } from "@media-server/shared";
 
-type LoadState = "idle" | "loading" | "error";
+import { client, queryKeys } from "./fetch-client";
 
 const EMPTY_LIBRARY: LibraryCatalogSnapshot = {
   generatedAt: new Date(0).toISOString(),
@@ -20,269 +17,163 @@ const EMPTY_LIBRARY: LibraryCatalogSnapshot = {
 };
 
 export default function App() {
-  const [library, setLibrary] = useState<LibraryCatalogSnapshot>(EMPTY_LIBRARY);
-  const [selectedNebulaFileId, setSelectedNebulaFileId] = useState<string | null>(null);
-  const [selectedBrowserFile, setSelectedBrowserFile] = useState<LibraryFileRecord | null>(null);
-  const [loadState, setLoadState] = useState<LoadState>("idle");
-  const [libraryStatus, setLibraryStatus] = useState<LibraryCatalogStatus | null>(null);
-  const [isRescanningLibrary, setIsRescanningLibrary] = useState(false);
-  const [libraryError, setLibraryError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const [selectedNebulaFileId, setSelectedNebulaFileId] = useState<
+    string | null
+  >(null);
+  const [selectedBrowserFile, setSelectedBrowserFile] =
+    useState<LibraryFileRecord | null>(null);
   const [magnetLink, setMagnetLink] = useState("");
-  const [downloads, setDownloads] = useState<TorrentDownloadRecord[]>([]);
   const [downloadError, setDownloadError] = useState<string | null>(null);
-  const [isSubmittingTorrent, setIsSubmittingTorrent] = useState(false);
-  const [browserPlaybackError, setBrowserPlaybackError] = useState<string | null>(
-    null,
-  );
-  const [adbStatus, setAdbStatus] = useState<AdbStatus | null>(null);
+  const [browserPlaybackError, setBrowserPlaybackError] = useState<
+    string | null
+  >(null);
   const [adbError, setAdbError] = useState<string | null>(null);
-  const [isConnectingAdb, setIsConnectingAdb] = useState(false);
-  const [isLaunchingVlc, setIsLaunchingVlc] = useState(false);
   const [nebulaFeedback, setNebulaFeedback] = useState<string | null>(null);
   const [nebulaError, setNebulaError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let isMounted = true;
+  const libraryQuery = useQuery({
+    queryKey: queryKeys.library,
+    queryFn: () => client.getLibrary(),
+    refetchInterval: 5000,
+  });
 
-    async function refreshLibrary() {
-      try {
-        const response = await fetch("/library");
-        const nextLibrary = (await response.json()) as LibraryCatalogSnapshot;
+  const libraryStatusQuery = useQuery({
+    queryKey: queryKeys.libraryStatus,
+    queryFn: () => client.getLibraryStatus(),
+    refetchInterval: 5000,
+  });
 
-        if (isMounted) {
-          setLibrary(nextLibrary);
-          setLibraryError(null);
-          setLoadState("idle");
-        }
-      } catch {
-        if (isMounted) {
-          setLoadState("error");
-          setLibraryError("Unable to load the media library from the backend.");
-        }
-      }
-    }
+  const adbStatusQuery = useQuery({
+    queryKey: queryKeys.adbStatus,
+    queryFn: () => client.getAdbStatus(),
+    refetchInterval: 5000,
+  });
 
-    async function loadLibrary() {
-      setLoadState("loading");
-      await refreshLibrary();
-    }
+  const torrentsQuery = useQuery({
+    queryKey: queryKeys.torrents,
+    queryFn: () => client.getTorrents(),
+    refetchInterval: 2000,
+  });
 
-    void loadLibrary();
+  const playFileMutation = useMutation({
+    mutationFn: (fileId: string) => client.playFile(fileId),
+  });
 
-    const intervalId = window.setInterval(() => {
-      void refreshLibrary();
-    }, 5000);
+  const launchVlcMutation = useMutation({
+    mutationFn: () => client.launchVlc(),
+  });
 
-    return () => {
-      isMounted = false;
-      window.clearInterval(intervalId);
-    };
-  }, []);
+  const rescanLibraryMutation = useMutation({
+    mutationFn: () => client.rescanLibrary(),
+    onSuccess: async (snapshot) => {
+      queryClient.setQueryData(queryKeys.library, snapshot);
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.libraryStatus,
+      });
+    },
+  });
 
-  useEffect(() => {
-    let isMounted = true;
+  const startTorrentMutation = useMutation({
+    mutationFn: (magnetLink: string) => client.startTorrent(magnetLink),
+    onSuccess: async (download) => {
+      queryClient.setQueryData(
+        queryKeys.torrents,
+        (currentDownloads: TorrentDownloadRecord[] = []) => [
+          download,
+          ...currentDownloads,
+        ],
+      );
+      await queryClient.invalidateQueries({ queryKey: queryKeys.library });
+    },
+  });
 
-    async function loadLibraryStatus() {
-      try {
-        const response = await fetch("/library/status");
-        const nextStatus = (await response.json()) as LibraryCatalogStatus;
+  const cancelTorrentMutation = useMutation({
+    mutationFn: (id: string) => client.cancelTorrent(id),
+    onSuccess: (updatedDownload) => {
+      queryClient.setQueryData(
+        queryKeys.torrents,
+        (currentDownloads: TorrentDownloadRecord[] = []) =>
+          currentDownloads.map((download) =>
+            download.id === updatedDownload.id ? updatedDownload : download,
+          ),
+      );
+    },
+  });
 
-        if (isMounted) {
-          setLibraryStatus(nextStatus);
-        }
-      } catch {
-        if (isMounted) {
-          setLibraryStatus({
-            state: "error",
-            lastScanAt: null,
-            lastError: "Unable to load library scan status.",
-            watchEnabled: false,
-          });
-        }
-      }
-    }
+  const connectAdbMutation = useMutation({
+    mutationFn: () => client.connectAdb(),
+    onSuccess: (status) => {
+      queryClient.setQueryData(queryKeys.adbStatus, status);
+    },
+  });
 
-    void loadLibraryStatus();
+  const library = libraryQuery.data ?? EMPTY_LIBRARY;
+  const libraryStatus = libraryStatusQuery.data ?? null;
+  const adbStatus = adbStatusQuery.data ?? null;
+  const downloads = torrentsQuery.data ?? [];
+  const loadState =
+    libraryQuery.status === "pending"
+      ? "loading"
+      : libraryQuery.isError
+        ? "error"
+        : "idle";
+  const libraryError = libraryQuery.isError
+    ? libraryQuery.error instanceof Error
+      ? libraryQuery.error.message
+      : "Unable to load the media library from the backend."
+    : rescanLibraryMutation.isError
+      ? rescanLibraryMutation.error instanceof Error
+        ? rescanLibraryMutation.error.message
+        : "Failed to rescan library"
+      : null;
 
-    const intervalId = window.setInterval(() => {
-      void loadLibraryStatus();
-    }, 5000);
-
-    return () => {
-      isMounted = false;
-      window.clearInterval(intervalId);
-    };
-  }, []);
-
-  async function readErrorMessage(
-    response: Response,
-    fallbackMessage: string,
-  ): Promise<string> {
-    const contentType = response.headers.get("content-type") ?? "";
-
-    if (contentType.includes("application/json")) {
-      const payload = (await response.json()) as { error?: string };
-      return payload.error ?? fallbackMessage;
-    }
-
-    const text = (await response.text()).trim();
-    return text || fallbackMessage;
-  }
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadAdbStatus() {
-      try {
-        const response = await fetch("/adb/status");
-        const nextStatus = (await response.json()) as AdbStatus;
-        if (isMounted) {
-          setAdbStatus(nextStatus);
-          setAdbError(null);
-        }
-      } catch {
-        if (isMounted) {
-          setAdbError("Unable to load projector connection status.");
-        }
-      }
-    }
-
-    void loadAdbStatus();
-
-    const intervalId = window.setInterval(() => {
-      void loadAdbStatus();
-    }, 5000);
-
-    return () => {
-      isMounted = false;
-      window.clearInterval(intervalId);
-    };
-  }, []);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadDownloads() {
-      try {
-        const response = await fetch("/torrents");
-        const nextDownloads = (await response.json()) as TorrentDownloadRecord[];
-        if (isMounted) {
-          setDownloads(nextDownloads);
-        }
-      } catch {
-        if (isMounted) {
-          setDownloadError("Unable to load torrent activity from the backend.");
-        }
-      }
-    }
-
-    void loadDownloads();
-
-    const intervalId = window.setInterval(() => {
-      void loadDownloads();
-    }, 2000);
-
-    return () => {
-      isMounted = false;
-      window.clearInterval(intervalId);
-    };
-  }, []);
-
-  async function refreshLibraryNow() {
-    const response = await fetch("/library");
-    const nextLibrary = (await response.json()) as LibraryCatalogSnapshot;
-    setLibrary(nextLibrary);
-  }
-
-  async function playFile(file: LibraryFileRecord) {
+  async function handlePlayFile(file: LibraryFileRecord) {
     setSelectedNebulaFileId(file.id);
     setNebulaError(null);
     setNebulaFeedback(`Sending ${file.relativePath} to VLC...`);
 
     try {
-      const response = await fetch("/play", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ fileId: file.id }),
-      });
-
-      if (!response.ok) {
-        const message = await readErrorMessage(response, "Failed to launch VLC");
-        setNebulaError(message);
-        setNebulaFeedback(null);
-        return;
-      }
-
-      const payload = (await response.json()) as PlayResponse;
-      const mediaLaunchOutput = payload.launch.launch.stdout || "No output from media launch.";
+      const payload = await playFileMutation.mutateAsync(file.id);
+      const mediaLaunchOutput =
+        payload.launch.launch.stdout || "No output from media launch.";
       setNebulaFeedback(
         `Sent ${file.relativePath} to VLC at ${payload.launch.mediaUrl}. ${mediaLaunchOutput}`,
       );
     } catch (error) {
-      setNebulaError(error instanceof Error ? error.message : "Failed to launch VLC");
+      setNebulaError(
+        error instanceof Error ? error.message : "Failed to launch VLC",
+      );
       setNebulaFeedback(null);
     }
   }
 
-  async function launchVlc() {
-    setIsLaunchingVlc(true);
+  async function handleLaunchVlc() {
     setNebulaError(null);
     setNebulaFeedback("Launching VLC app...");
 
     try {
-      const response = await fetch("/vlc/launch", {
-        method: "POST",
-      });
-
-      if (!response.ok) {
-        const message = await readErrorMessage(response, "Failed to launch VLC");
-        setNebulaError(message);
-        setNebulaFeedback(null);
-        return;
-      }
-
-      const payload = (await response.json()) as LaunchVlcResponse;
-      const launchOutput = payload.launch.stdout || "No output from app launch.";
+      const payload = await launchVlcMutation.mutateAsync();
+      const launchOutput =
+        payload.launch.stdout || "No output from app launch.";
       setNebulaFeedback(`Launched VLC app. ${launchOutput}`);
     } catch (error) {
-      setNebulaError(error instanceof Error ? error.message : "Failed to launch VLC");
-      setNebulaFeedback(null);
-    } finally {
-      setIsLaunchingVlc(false);
-    }
-  }
-
-  async function rescanLibrary() {
-    setIsRescanningLibrary(true);
-    setLibraryError(null);
-
-    try {
-      const response = await fetch("/library/rescan", {
-        method: "POST",
-      });
-
-      if (!response.ok) {
-        throw new Error(await readErrorMessage(response, "Failed to rescan library"));
-      }
-
-      const nextLibrary = (await response.json()) as LibraryCatalogSnapshot;
-      setLibrary(nextLibrary);
-
-      const statusResponse = await fetch("/library/status");
-      const nextStatus = (await statusResponse.json()) as LibraryCatalogStatus;
-      setLibraryStatus(nextStatus);
-    } catch (error) {
-      setLibraryError(
-        error instanceof Error ? error.message : "Failed to rescan library",
+      setNebulaError(
+        error instanceof Error ? error.message : "Failed to launch VLC",
       );
-    } finally {
-      setIsRescanningLibrary(false);
+      setNebulaFeedback(null);
     }
   }
 
-  async function submitTorrent(event: React.FormEvent<HTMLFormElement>) {
+  async function handleRescanLibrary() {
+    try {
+      await rescanLibraryMutation.mutateAsync();
+    } catch {
+      // Error state is surfaced from the mutation.
+    }
+  }
+
+  async function handleSubmitTorrent(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!magnetLink.trim()) {
@@ -290,78 +181,41 @@ export default function App() {
       return;
     }
 
-    setIsSubmittingTorrent(true);
     setDownloadError(null);
 
     try {
-      const response = await fetch("/torrents", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ magnetLink }),
-      });
-
-      if (!response.ok) {
-        throw new Error(
-          await readErrorMessage(response, "Failed to start torrent download"),
-        );
-      }
-
-      const createdDownload = (await response.json()) as TorrentDownloadRecord;
-      setDownloads((currentDownloads) => [createdDownload, ...currentDownloads]);
+      await startTorrentMutation.mutateAsync(magnetLink);
       setMagnetLink("");
-      await refreshLibraryNow();
     } catch (error) {
       setDownloadError(
-        error instanceof Error ? error.message : "Failed to start torrent download",
+        error instanceof Error
+          ? error.message
+          : "Failed to start torrent download",
       );
-    } finally {
-      setIsSubmittingTorrent(false);
     }
   }
 
-  async function cancelDownload(id: string) {
+  async function handleCancelDownload(id: string) {
     try {
       setDownloadError(null);
-      const response = await fetch(`/torrents/${id}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        throw new Error(
-          await readErrorMessage(response, "Failed to cancel torrent download"),
-        );
-      }
-
-      const updatedDownload = (await response.json()) as TorrentDownloadRecord;
-      setDownloads((currentDownloads) =>
-        currentDownloads.map((download) =>
-          download.id === updatedDownload.id ? updatedDownload : download,
-        ),
-      );
+      await cancelTorrentMutation.mutateAsync(id);
     } catch (error) {
       setDownloadError(
-        error instanceof Error ? error.message : "Failed to cancel torrent download",
+        error instanceof Error
+          ? error.message
+          : "Failed to cancel torrent download",
       );
     }
   }
 
-  async function playInBrowser(file: LibraryFileRecord) {
+  async function handlePlayInBrowser(file: LibraryFileRecord) {
     if (!file.browserUrl) {
       setBrowserPlaybackError("Browser-ready copy is not available yet.");
       return;
     }
 
     try {
-      const response = await fetch(file.browserUrl, {
-        method: "HEAD",
-      });
-
-      if (!response.ok) {
-        throw new Error("Browser-ready copy is not available yet.");
-      }
-
+      await client.ensureBrowserReady(file.browserUrl);
       setBrowserPlaybackError(null);
       setSelectedBrowserFile(file);
     } catch (error) {
@@ -373,34 +227,25 @@ export default function App() {
     }
   }
 
-  async function connectAdb() {
-    setIsConnectingAdb(true);
+  async function handleConnectAdb() {
     setAdbError(null);
 
     try {
-      const response = await fetch("/adb/connect", {
-        method: "POST",
-      });
-
-      if (!response.ok) {
-        throw new Error(
-          await readErrorMessage(response, "Unable to connect to projector"),
-        );
-      }
-
-      const nextStatus = (await response.json()) as AdbStatus;
-      setAdbStatus(nextStatus);
+      await connectAdbMutation.mutateAsync();
     } catch (error) {
       setAdbError(
-        error instanceof Error ? error.message : "Unable to connect to projector",
+        error instanceof Error
+          ? error.message
+          : "Unable to connect to projector",
       );
-    } finally {
-      setIsConnectingAdb(false);
     }
   }
 
   function formatProgress(download: TorrentDownloadRecord) {
-    if (download.status === "processing" && download.processingProgress !== null) {
+    if (
+      download.status === "processing" &&
+      download.processingProgress !== null
+    ) {
       return `Converting ${(download.processingProgress * 100).toFixed(1)}%`;
     }
 
@@ -412,18 +257,22 @@ export default function App() {
       <div className="file-actions">
         <button
           className={
-            selectedBrowserFile?.id === file.id ? "file-button active" : "file-button"
+            selectedBrowserFile?.id === file.id
+              ? "file-button active"
+              : "file-button"
           }
-          onClick={() => void playInBrowser(file)}
+          onClick={() => void handlePlayInBrowser(file)}
           type="button"
         >
           Browser
         </button>
         <button
           className={
-            selectedNebulaFileId === file.id ? "file-button active" : "file-button"
+            selectedNebulaFileId === file.id
+              ? "file-button active"
+              : "file-button"
           }
-          onClick={() => void playFile(file)}
+          onClick={() => void handlePlayFile(file)}
           type="button"
         >
           Nebula
@@ -441,21 +290,28 @@ export default function App() {
         <p className="eyebrow">Media server</p>
         <h1>Projector Control</h1>
         <p className="description">
-          Import movies and shows from the media folder, track torrents, and send any
-          cataloged file straight to VLC on the Nebula.
+          Import movies and shows from the media folder, track torrents, and
+          send any cataloged file straight to VLC on the Nebula.
         </p>
 
         <section className="adb-card">
           <div className="section-heading">
             <h2>Projector connection</h2>
-            <span className={adbStatus?.connected ? "status-pill connected" : "status-pill"}>
+            <span
+              className={
+                adbStatus?.connected ? "status-pill connected" : "status-pill"
+              }
+            >
               {adbStatus?.connected ? "Connected" : "Disconnected"}
             </span>
           </div>
           <p className="download-meta">
-            Target: {adbStatus ? `${adbStatus.host}:${adbStatus.port}` : "Loading..."}
+            Target:{" "}
+            {adbStatus ? `${adbStatus.host}:${adbStatus.port}` : "Loading..."}
           </p>
-          {adbStatus && <p className="download-meta">Serial: {adbStatus.serial}</p>}
+          {adbStatus && (
+            <p className="download-meta">Serial: {adbStatus.serial}</p>
+          )}
           {adbStatus?.lastError && (
             <p className="status-message error">{adbStatus.lastError}</p>
           )}
@@ -463,24 +319,31 @@ export default function App() {
           <div className="torrent-actions">
             <button
               className="primary-button"
-              disabled={isConnectingAdb}
-              onClick={() => void connectAdb()}
+              disabled={connectAdbMutation.status === "pending"}
+              onClick={() => void handleConnectAdb()}
               type="button"
             >
-              {isConnectingAdb ? "Connecting..." : "Connect"}
+              {connectAdbMutation.status === "pending"
+                ? "Connecting..."
+                : "Connect"}
             </button>
             <button
               className="secondary-button"
-              disabled={isLaunchingVlc}
-              onClick={() => void launchVlc()}
+              disabled={launchVlcMutation.status === "pending"}
+              onClick={() => void handleLaunchVlc()}
               type="button"
             >
-              {isLaunchingVlc ? "Launching..." : "Launch VLC"}
+              {launchVlcMutation.status === "pending"
+                ? "Launching..."
+                : "Launch VLC"}
             </button>
           </div>
         </section>
 
-        <form className="torrent-form" onSubmit={(event) => void submitTorrent(event)}>
+        <form
+          className="torrent-form"
+          onSubmit={(event) => void handleSubmitTorrent(event)}
+        >
           <label className="field-label" htmlFor="magnet-link">
             Magnet link
           </label>
@@ -493,10 +356,18 @@ export default function App() {
             value={magnetLink}
           />
           <div className="torrent-actions">
-            <button className="primary-button" disabled={isSubmittingTorrent} type="submit">
-              {isSubmittingTorrent ? "Starting…" : "Start download"}
+            <button
+              className="primary-button"
+              disabled={startTorrentMutation.status === "pending"}
+              type="submit"
+            >
+              {startTorrentMutation.status === "pending"
+                ? "Starting…"
+                : "Start download"}
             </button>
-            {downloadError && <p className="status-message error">{downloadError}</p>}
+            {downloadError && (
+              <p className="status-message error">{downloadError}</p>
+            )}
           </div>
         </form>
 
@@ -511,7 +382,8 @@ export default function App() {
           <ul className="download-list">
             {downloads.map((download) => {
               const isCancelable =
-                download.status === "starting" || download.status === "downloading";
+                download.status === "starting" ||
+                download.status === "downloading";
 
               return (
                 <li className="download-card" key={download.id}>
@@ -525,7 +397,7 @@ export default function App() {
                     {isCancelable && (
                       <button
                         className="secondary-button"
-                        onClick={() => void cancelDownload(download.id)}
+                        onClick={() => void handleCancelDownload(download.id)}
                         type="button"
                       >
                         Cancel
@@ -535,7 +407,9 @@ export default function App() {
                   <div className="progress-track">
                     <div
                       className="progress-bar"
-                      style={{ width: `${Math.max(download.progress * 100, 4)}%` }}
+                      style={{
+                        width: `${Math.max(download.progress * 100, 4)}%`,
+                      }}
                     />
                   </div>
                   <p className="download-meta">
@@ -548,7 +422,9 @@ export default function App() {
                         : "Waiting for peers"}
                   </p>
                   {download.processingDetails && (
-                    <p className="download-meta">{download.processingDetails}</p>
+                    <p className="download-meta">
+                      {download.processingDetails}
+                    </p>
                   )}
                   {download.browserCopyPath && (
                     <p className="download-meta">
@@ -556,7 +432,9 @@ export default function App() {
                     </p>
                   )}
                   {download.errorMessage && (
-                    <p className="status-message error">{download.errorMessage}</p>
+                    <p className="status-message error">
+                      {download.errorMessage}
+                    </p>
                   )}
                 </li>
               );
@@ -577,11 +455,13 @@ export default function App() {
             </div>
             <button
               className="secondary-button"
-              disabled={isRescanningLibrary}
-              onClick={() => void rescanLibrary()}
+              disabled={rescanLibraryMutation.status === "pending"}
+              onClick={() => void handleRescanLibrary()}
               type="button"
             >
-              {isRescanningLibrary ? "Rescanning..." : "Rescan library"}
+              {rescanLibraryMutation.status === "pending"
+                ? "Rescanning..."
+                : "Rescan library"}
             </button>
           </div>
           {libraryStatus?.state === "scanning" && (
@@ -594,7 +474,9 @@ export default function App() {
           {loadState === "error" && (
             <p>Unable to load the media library from the backend.</p>
           )}
-          {libraryError && <p className="status-message error">{libraryError}</p>}
+          {libraryError && (
+            <p className="status-message error">{libraryError}</p>
+          )}
           {nebulaFeedback && <p className="download-meta">{nebulaFeedback}</p>}
           {nebulaError && <p className="status-message error">{nebulaError}</p>}
 
@@ -640,7 +522,9 @@ export default function App() {
                           {movie.title}
                           {movie.year ? ` (${movie.year})` : ""}
                         </p>
-                        <p className="download-meta">{movie.files.length} file(s)</p>
+                        <p className="download-meta">
+                          {movie.files.length} file(s)
+                        </p>
                       </div>
                     </div>
                     <ul className="file-list compact">
@@ -672,7 +556,9 @@ export default function App() {
                     <div className="library-card-header">
                       <div>
                         <p className="download-title">{show.title}</p>
-                        <p className="download-meta">{show.seasons.length} season(s)</p>
+                        <p className="download-meta">
+                          {show.seasons.length} season(s)
+                        </p>
                       </div>
                     </div>
                     <div className="season-stack">
