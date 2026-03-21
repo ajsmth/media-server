@@ -2,20 +2,36 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 const SUPPORTED_EXTENSIONS = new Set([".mp4", ".mkv"]);
-const HIDDEN_DIRECTORIES = new Set([".incomplete", "browser"]);
+const HIDDEN_DIRECTORIES = new Set([".incomplete", "browser", ".index"]);
 
 type TorrentFileDescriptor = {
   name: string;
   path: string;
 };
 
+export type PlayableFileEntry = {
+  relativePath: string;
+  absolutePath: string;
+  baseName: string;
+  extension: string;
+  sizeBytes: number;
+  modifiedAt: string;
+  modifiedAtMs: number;
+};
+
 export class MediaLibrary {
   constructor(private readonly mediaDir: string) { }
 
   async listPlayableFiles(): Promise<string[]> {
+    const files = await this.listPlayableFileEntries();
+
+    return files.map((file) => file.relativePath);
+  }
+
+  async listPlayableFileEntries(): Promise<PlayableFileEntry[]> {
     const files = await this.collectPlayableFiles(this.mediaDir);
 
-    return files.sort((left, right) => left.localeCompare(right));
+    return files.sort((left, right) => left.relativePath.localeCompare(right.relativePath));
   }
 
   async resolveExistingFile(fileName: string): Promise<string | null> {
@@ -94,7 +110,16 @@ export class MediaLibrary {
     return browserRelativePath.split(path.sep).join("/");
   }
 
-  private async collectPlayableFiles(directory: string): Promise<string[]> {
+  async hasBrowserMediaFor(fileName: string): Promise<boolean> {
+    try {
+      await fs.access(path.join(this.mediaDir, this.browserMediaPathFor(fileName)));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async collectPlayableFiles(directory: string): Promise<PlayableFileEntry[]> {
     const entries = await fs.readdir(directory, { withFileTypes: true });
     const files = await Promise.all(
       entries.map(async (entry) => {
@@ -112,7 +137,16 @@ export class MediaLibrary {
           entry.isFile() &&
           SUPPORTED_EXTENSIONS.has(path.extname(entry.name).toLowerCase())
         ) {
-          return [path.relative(this.mediaDir, entryPath)];
+          const stats = await fs.stat(entryPath);
+          return [{
+            relativePath: path.relative(this.mediaDir, entryPath),
+            absolutePath: entryPath,
+            baseName: path.basename(entryPath),
+            extension: path.extname(entry.name).toLowerCase(),
+            sizeBytes: stats.size,
+            modifiedAt: stats.mtime.toISOString(),
+            modifiedAtMs: stats.mtimeMs,
+          }];
         }
 
         return [];

@@ -1,4 +1,4 @@
-import { AndroidDeviceClient } from "./android-device-client.js";
+import { AndroidDeviceClient } from "./android-device-client";
 
 type VlcRemoteControllerOptions = {
   packageName: string;

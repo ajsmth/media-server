@@ -1,23 +1,27 @@
 import express from "express";
 import path from "node:path";
 
-import { config } from "./config.js";
-import { AndroidDeviceClient } from "./services/android-device-client.js";
-import { BrowserMediaTranscoder } from "./services/browser-media-transcoder.js";
-import { MediaLibrary } from "./services/media-library.js";
+import { config } from "./config";
+import { AndroidDeviceClient } from "./services/android-device-client";
+import { BrowserMediaTranscoder } from "./services/browser-media-transcoder";
+import {
+  LibraryCatalogService,
+  type LibraryCatalogSnapshot,
+} from "./services/library-catalog-service";
+import { MediaLibrary } from "./services/media-library";
 import {
   TorrentDownloadService,
   type TorrentDownloadRecord,
-} from "./services/torrent-download-service.js";
-import { VlcRemoteController } from "./services/vlc-remote-controller.js";
+} from "./services/torrent-download-service";
+import { VlcRemoteController } from "./services/vlc-remote-controller";
 
 type PlayRequestBody = {
-  file?: string;
+  fileId?: string;
 };
 
 type PlayResponse = {
   status: "playing";
-  file: string;
+  fileId: string;
   launch: {
     mediaUrl: string;
     launch: {
@@ -55,13 +59,22 @@ type AdbStatusResponse = {
   lastError: string | null;
 };
 
+type LibraryFileParams = {
+  fileId: string;
+};
+
 const app = express();
 const mediaLibrary = new MediaLibrary(config.mediaDir);
 const browserMediaTranscoder = new BrowserMediaTranscoder(config.browserMediaDir);
+const libraryCatalog = new LibraryCatalogService(mediaLibrary, {
+  mediaDir: config.mediaDir,
+  indexFilePath: config.libraryIndexFile,
+});
 const torrentDownloadService = new TorrentDownloadService(
   mediaLibrary,
   config.incompleteDownloadsDir,
   browserMediaTranscoder,
+  () => libraryCatalog.rescan().then(() => undefined),
 );
 const androidDeviceClient = new AndroidDeviceClient({
   host: config.nebulaIp,
@@ -77,11 +90,33 @@ app.use(express.json());
 app.use("/media", express.static(config.mediaDir));
 app.use(express.static(config.clientDistDir));
 
-app.get("/media/:fileName", async (req, res, next) => {
+app.get("/library", (_req, res) => {
+  res.json(libraryCatalog.getSnapshot());
+});
+
+app.get("/library/status", (_req, res) => {
+  res.json(libraryCatalog.getStatus());
+});
+
+app.post(
+  "/library/rescan",
+  async (
+    _req: express.Request<Record<string, never>, LibraryCatalogSnapshot | ErrorResponse>,
+    res,
+    next,
+  ) => {
+    try {
+      const snapshot = await libraryCatalog.rescan();
+      res.json(snapshot);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+app.get("/library/files/:fileId/source", async (req, res, next) => {
   try {
-    const existingFile = await mediaLibrary.resolveExistingFileByBaseName(
-      req.params.fileName,
-    );
+    const existingFile = await libraryCatalog.resolveSourceFilePath(req.params.fileId);
 
     if (!existingFile) {
       res.status(404).json({ error: "File not found" });
@@ -93,6 +128,24 @@ app.get("/media/:fileName", async (req, res, next) => {
     next(error);
   }
 });
+
+app.get(
+  "/library/files/:fileId/browser",
+  async (req: express.Request<LibraryFileParams>, res, next) => {
+    try {
+      const existingFile = await libraryCatalog.resolveBrowserFilePath(req.params.fileId);
+
+      if (!existingFile) {
+        res.status(404).json({ error: "Browser-ready copy not found" });
+        return;
+      }
+
+      res.sendFile(existingFile);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 app.get("/adb/status", async (_req, res, next) => {
   try {
@@ -120,15 +173,6 @@ app.post(
   },
 );
 
-app.get("/files", async (_req, res, next) => {
-  try {
-    const files = await mediaLibrary.listPlayableFiles();
-    res.json(files);
-  } catch (error) {
-    next(error);
-  }
-});
-
 app.post(
   "/play",
   async (
@@ -137,22 +181,22 @@ app.post(
     next,
   ) => {
     try {
-      const file = req.body.file;
+      const fileId = req.body.fileId;
 
-      if (!file) {
-        res.status(400).json({ error: "A file name is required" });
+      if (!fileId) {
+        res.status(400).json({ error: "A file ID is required" });
         return;
       }
 
-      const existingFile = await mediaLibrary.resolveExistingFile(file);
+      const file = libraryCatalog.findFileById(fileId);
 
-      if (!existingFile) {
+      if (!file) {
         res.status(404).json({ error: "File not found" });
         return;
       }
 
       const fileUrl = new URL(
-        `/media/${encodeURIComponent(path.basename(existingFile))}`,
+        file.sourceUrl,
         `http://${config.playbackHost}:${config.serverPort}`,
       );
 
@@ -160,7 +204,7 @@ app.post(
       const launch = await vlcRemoteController.playMediaUrl(fileUrl.toString());
       console.log("[vlc] media launch output:", launch.launch.stdout || "<no output>");
 
-      res.json({ status: "playing", file, launch });
+      res.json({ status: "playing", fileId, launch });
     } catch (error) {
       next(error);
     }
@@ -239,8 +283,17 @@ app.use((
   res.status(500).json({ error: message });
 });
 
-app.listen(config.serverPort, () => {
-  console.log(
-    `Server running at http://${config.serverHost}:${config.serverPort}`,
-  );
+async function startServer(): Promise<void> {
+  await libraryCatalog.initialize();
+
+  app.listen(config.serverPort, () => {
+    console.log(
+      `Server running at http://${config.serverHost}:${config.serverPort}`,
+    );
+  });
+}
+
+void startServer().catch((error) => {
+  console.error("Failed to start server:", error);
+  process.exitCode = 1;
 });

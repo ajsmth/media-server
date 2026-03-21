@@ -33,9 +33,81 @@ type AdbStatus = {
   lastError: string | null;
 };
 
+type LibraryFile = {
+  id: string;
+  relativePath: string;
+  basename: string;
+  sizeBytes: number;
+  modifiedAt: string;
+  sourceUrl: string;
+  browserUrl: string | null;
+  browserCopyReady: boolean;
+  parsed: {
+    rawName: string;
+    title: string;
+    normalizedTitle: string;
+    type: "movie" | "episode" | "other";
+    year: number | null;
+    seasonNumber: number | null;
+    episodeNumbers: number[];
+    tags: string[];
+    confidence: "high" | "medium" | "low";
+  };
+};
+
+type LibraryMovie = {
+  id: string;
+  title: string;
+  sortTitle: string;
+  year: number | null;
+  files: LibraryFile[];
+};
+
+type LibraryEpisode = {
+  id: string;
+  title: string;
+  seasonNumber: number;
+  episodeNumbers: number[];
+  files: LibraryFile[];
+};
+
+type LibrarySeason = {
+  id: string;
+  seasonNumber: number;
+  episodes: LibraryEpisode[];
+};
+
+type LibraryShow = {
+  id: string;
+  title: string;
+  sortTitle: string;
+  seasons: LibrarySeason[];
+};
+
+type LibraryOtherVideo = {
+  id: string;
+  title: string;
+  files: LibraryFile[];
+};
+
+type LibraryCatalog = {
+  generatedAt: string;
+  lastScanAt: string | null;
+  movies: LibraryMovie[];
+  shows: LibraryShow[];
+  otherVideos: LibraryOtherVideo[];
+};
+
+type LibraryStatus = {
+  state: "idle" | "scanning" | "error";
+  lastScanAt: string | null;
+  lastError: string | null;
+  watchEnabled: boolean;
+};
+
 type PlayResponse = {
   status: "playing";
-  file: string;
+  fileId: string;
   launch: {
     mediaUrl: string;
     launch: {
@@ -53,11 +125,22 @@ type LaunchVlcResponse = {
   };
 };
 
+const EMPTY_LIBRARY: LibraryCatalog = {
+  generatedAt: new Date(0).toISOString(),
+  lastScanAt: null,
+  movies: [],
+  shows: [],
+  otherVideos: [],
+};
+
 export default function App() {
-  const [files, setFiles] = useState<string[]>([]);
-  const [selectedNebulaFile, setSelectedNebulaFile] = useState<string | null>(null);
-  const [selectedBrowserFile, setSelectedBrowserFile] = useState<string | null>(null);
+  const [library, setLibrary] = useState<LibraryCatalog>(EMPTY_LIBRARY);
+  const [selectedNebulaFileId, setSelectedNebulaFileId] = useState<string | null>(null);
+  const [selectedBrowserFile, setSelectedBrowserFile] = useState<LibraryFile | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("idle");
+  const [libraryStatus, setLibraryStatus] = useState<LibraryStatus | null>(null);
+  const [isRescanningLibrary, setIsRescanningLibrary] = useState(false);
+  const [libraryError, setLibraryError] = useState<string | null>(null);
   const [magnetLink, setMagnetLink] = useState("");
   const [downloads, setDownloads] = useState<TorrentDownload[]>([]);
   const [downloadError, setDownloadError] = useState<string | null>(null);
@@ -77,28 +160,66 @@ export default function App() {
 
     async function refreshLibrary() {
       try {
-        const response = await fetch("/files");
-        const nextFiles = (await response.json()) as string[];
+        const response = await fetch("/library");
+        const nextLibrary = (await response.json()) as LibraryCatalog;
+
         if (isMounted) {
-          setFiles(nextFiles);
+          setLibrary(nextLibrary);
+          setLibraryError(null);
           setLoadState("idle");
         }
       } catch {
         if (isMounted) {
           setLoadState("error");
+          setLibraryError("Unable to load the media library from the backend.");
         }
       }
     }
 
-    async function loadFiles() {
+    async function loadLibrary() {
       setLoadState("loading");
       await refreshLibrary();
     }
 
-    void loadFiles();
+    void loadLibrary();
 
     const intervalId = window.setInterval(() => {
       void refreshLibrary();
+    }, 5000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadLibraryStatus() {
+      try {
+        const response = await fetch("/library/status");
+        const nextStatus = (await response.json()) as LibraryStatus;
+
+        if (isMounted) {
+          setLibraryStatus(nextStatus);
+        }
+      } catch {
+        if (isMounted) {
+          setLibraryStatus({
+            state: "error",
+            lastScanAt: null,
+            lastError: "Unable to load library scan status.",
+            watchEnabled: false,
+          });
+        }
+      }
+    }
+
+    void loadLibraryStatus();
+
+    const intervalId = window.setInterval(() => {
+      void loadLibraryStatus();
     }, 5000);
 
     return () => {
@@ -181,10 +302,16 @@ export default function App() {
     };
   }, []);
 
-  async function playFile(file: string) {
-    setSelectedNebulaFile(file);
+  async function refreshLibraryNow() {
+    const response = await fetch("/library");
+    const nextLibrary = (await response.json()) as LibraryCatalog;
+    setLibrary(nextLibrary);
+  }
+
+  async function playFile(file: LibraryFile) {
+    setSelectedNebulaFileId(file.id);
     setNebulaError(null);
-    setNebulaFeedback(`Sending ${file} to VLC...`);
+    setNebulaFeedback(`Sending ${file.relativePath} to VLC...`);
 
     try {
       const response = await fetch("/play", {
@@ -192,7 +319,7 @@ export default function App() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ file }),
+        body: JSON.stringify({ fileId: file.id }),
       });
 
       if (!response.ok) {
@@ -205,7 +332,7 @@ export default function App() {
       const payload = (await response.json()) as PlayResponse;
       const mediaLaunchOutput = payload.launch.launch.stdout || "No output from media launch.";
       setNebulaFeedback(
-        `Sent ${payload.file} to VLC at ${payload.launch.mediaUrl}. ${mediaLaunchOutput}`,
+        `Sent ${file.relativePath} to VLC at ${payload.launch.mediaUrl}. ${mediaLaunchOutput}`,
       );
     } catch (error) {
       setNebulaError(error instanceof Error ? error.message : "Failed to launch VLC");
@@ -241,6 +368,34 @@ export default function App() {
     }
   }
 
+  async function rescanLibrary() {
+    setIsRescanningLibrary(true);
+    setLibraryError(null);
+
+    try {
+      const response = await fetch("/library/rescan", {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response, "Failed to rescan library"));
+      }
+
+      const nextLibrary = (await response.json()) as LibraryCatalog;
+      setLibrary(nextLibrary);
+
+      const statusResponse = await fetch("/library/status");
+      const nextStatus = (await statusResponse.json()) as LibraryStatus;
+      setLibraryStatus(nextStatus);
+    } catch (error) {
+      setLibraryError(
+        error instanceof Error ? error.message : "Failed to rescan library",
+      );
+    } finally {
+      setIsRescanningLibrary(false);
+    }
+  }
+
   async function submitTorrent(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -270,6 +425,7 @@ export default function App() {
       const createdDownload = (await response.json()) as TorrentDownload;
       setDownloads((currentDownloads) => [createdDownload, ...currentDownloads]);
       setMagnetLink("");
+      await refreshLibraryNow();
     } catch (error) {
       setDownloadError(
         error instanceof Error ? error.message : "Failed to start torrent download",
@@ -305,11 +461,14 @@ export default function App() {
     }
   }
 
-  async function playInBrowser(file: string) {
-    const browserMediaUrl = toBrowserMediaUrl(file);
+  async function playInBrowser(file: LibraryFile) {
+    if (!file.browserUrl) {
+      setBrowserPlaybackError("Browser-ready copy is not available yet.");
+      return;
+    }
 
     try {
-      const response = await fetch(browserMediaUrl, {
+      const response = await fetch(file.browserUrl, {
         method: "HEAD",
       });
 
@@ -354,11 +513,6 @@ export default function App() {
     }
   }
 
-  function toBrowserMediaUrl(file: string) {
-    const normalizedPath = file.replace(/\.[^.]+$/, ".mp4");
-    return `/media/browser/${normalizedPath.split("/").map(encodeURIComponent).join("/")}`;
-  }
-
   function formatProgress(download: TorrentDownload) {
     if (download.status === "processing" && download.processingProgress !== null) {
       return `Converting ${(download.processingProgress * 100).toFixed(1)}%`;
@@ -367,14 +521,42 @@ export default function App() {
     return `${(download.progress * 100).toFixed(1)}%`;
   }
 
+  function renderFileActions(file: LibraryFile) {
+    return (
+      <div className="file-actions">
+        <button
+          className={
+            selectedBrowserFile?.id === file.id ? "file-button active" : "file-button"
+          }
+          onClick={() => void playInBrowser(file)}
+          type="button"
+        >
+          Browser
+        </button>
+        <button
+          className={
+            selectedNebulaFileId === file.id ? "file-button active" : "file-button"
+          }
+          onClick={() => void playFile(file)}
+          type="button"
+        >
+          Nebula
+        </button>
+      </div>
+    );
+  }
+
+  const totalTitles =
+    library.movies.length + library.shows.length + library.otherVideos.length;
+
   return (
     <main className="app-shell">
       <section className="panel">
         <p className="eyebrow">Media server</p>
         <h1>Projector Control</h1>
         <p className="description">
-          Paste a magnet link to download media, then send completed files to VLC on
-          the Nebula.
+          Import movies and shows from the media folder, track torrents, and send any
+          cataloged file straight to VLC on the Nebula.
         </p>
 
         <section className="adb-card">
@@ -496,66 +678,181 @@ export default function App() {
           </ul>
         </div>
 
-        {loadState === "loading" && <p>Loading files…</p>}
-        {loadState === "error" && (
-          <p>Unable to load the media library from the backend.</p>
-        )}
-        {nebulaFeedback && <p className="download-meta">{nebulaFeedback}</p>}
-        {nebulaError && <p className="status-message error">{nebulaError}</p>}
-
-        {selectedBrowserFile && (
-          <section className="browser-player">
-            <div className="section-heading">
-              <h2>Browser player</h2>
-              <span>{selectedBrowserFile}</span>
+        <section className="library-section">
+          <div className="section-heading">
+            <div>
+              <h2>Library</h2>
+              <p className="download-meta">
+                {totalTitles} titles · last scan{" "}
+                {libraryStatus?.lastScanAt
+                  ? new Date(libraryStatus.lastScanAt).toLocaleString()
+                  : "pending"}
+              </p>
             </div>
-            {browserPlaybackError && (
-              <p className="status-message error">{browserPlaybackError}</p>
-            )}
-            <video
-              className="player-frame"
-              controls
-              key={selectedBrowserFile}
-              onError={() =>
-                setBrowserPlaybackError(
-                  "The browser-safe copy could not be played. It may still be transcoding.",
-                )
-              }
-              preload="metadata"
-              src={toBrowserMediaUrl(selectedBrowserFile)}
-            />
-          </section>
-        )}
+            <button
+              className="secondary-button"
+              disabled={isRescanningLibrary}
+              onClick={() => void rescanLibrary()}
+              type="button"
+            >
+              {isRescanningLibrary ? "Rescanning..." : "Rescan library"}
+            </button>
+          </div>
+          {libraryStatus?.state === "scanning" && (
+            <p className="download-meta">Scanning media folder…</p>
+          )}
+          {libraryStatus?.lastError && (
+            <p className="status-message error">{libraryStatus.lastError}</p>
+          )}
+          {loadState === "loading" && <p>Loading library…</p>}
+          {loadState === "error" && (
+            <p>Unable to load the media library from the backend.</p>
+          )}
+          {libraryError && <p className="status-message error">{libraryError}</p>}
+          {nebulaFeedback && <p className="download-meta">{nebulaFeedback}</p>}
+          {nebulaError && <p className="status-message error">{nebulaError}</p>}
 
-        <ul className="file-list">
-          {files.map((file) => (
-            <li className="file-card" key={file}>
-              <div className="file-name-row">
-                <span>{file}</span>
+          {selectedBrowserFile && (
+            <section className="browser-player">
+              <div className="section-heading">
+                <h2>Browser player</h2>
+                <span>{selectedBrowserFile.relativePath}</span>
               </div>
-              <div className="file-actions">
-                <button
-                  className={
-                    selectedBrowserFile === file ? "file-button active" : "file-button"
-                  }
-                  onClick={() => void playInBrowser(file)}
-                  type="button"
-                >
-                  Browser
-                </button>
-                <button
-                  className={
-                    selectedNebulaFile === file ? "file-button active" : "file-button"
-                  }
-                  onClick={() => void playFile(file)}
-                  type="button"
-                >
-                  Nebula
-                </button>
+              {browserPlaybackError && (
+                <p className="status-message error">{browserPlaybackError}</p>
+              )}
+              <video
+                className="player-frame"
+                controls
+                key={selectedBrowserFile.id}
+                onError={() =>
+                  setBrowserPlaybackError(
+                    "The browser-safe copy could not be played. It may still be transcoding.",
+                  )
+                }
+                preload="metadata"
+                src={selectedBrowserFile.browserUrl ?? undefined}
+              />
+            </section>
+          )}
+
+          <div className="library-grid">
+            <section className="library-column">
+              <div className="section-heading">
+                <h2>Movies</h2>
+                <span>{library.movies.length}</span>
               </div>
-            </li>
-          ))}
-        </ul>
+              {library.movies.length === 0 && (
+                <p className="empty-state">No movies imported yet.</p>
+              )}
+              <ul className="library-list">
+                {library.movies.map((movie) => (
+                  <li className="library-card" key={movie.id}>
+                    <div className="library-card-header">
+                      <div>
+                        <p className="download-title">
+                          {movie.title}
+                          {movie.year ? ` (${movie.year})` : ""}
+                        </p>
+                        <p className="download-meta">{movie.files.length} file(s)</p>
+                      </div>
+                    </div>
+                    <ul className="file-list compact">
+                      {movie.files.map((file) => (
+                        <li className="file-card" key={file.id}>
+                          <div className="file-name-row">
+                            <span>{file.relativePath}</span>
+                          </div>
+                          {renderFileActions(file)}
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+            </section>
+
+            <section className="library-column">
+              <div className="section-heading">
+                <h2>Shows</h2>
+                <span>{library.shows.length}</span>
+              </div>
+              {library.shows.length === 0 && (
+                <p className="empty-state">No shows imported yet.</p>
+              )}
+              <ul className="library-list">
+                {library.shows.map((show) => (
+                  <li className="library-card" key={show.id}>
+                    <div className="library-card-header">
+                      <div>
+                        <p className="download-title">{show.title}</p>
+                        <p className="download-meta">{show.seasons.length} season(s)</p>
+                      </div>
+                    </div>
+                    <div className="season-stack">
+                      {show.seasons.map((season) => (
+                        <section className="season-card" key={season.id}>
+                          <div className="section-heading">
+                            <h2>Season {season.seasonNumber}</h2>
+                            <span>{season.episodes.length} episode(s)</span>
+                          </div>
+                          <ul className="episode-list">
+                            {season.episodes.map((episode) => (
+                              <li className="episode-card" key={episode.id}>
+                                <p className="download-title">
+                                  {episode.title}
+                                  {episode.episodeNumbers.length > 0
+                                    ? ` · E${episode.episodeNumbers.join(", E")}`
+                                    : ""}
+                                </p>
+                                <ul className="file-list compact">
+                                  {episode.files.map((file) => (
+                                    <li className="file-card" key={file.id}>
+                                      <div className="file-name-row">
+                                        <span>{file.relativePath}</span>
+                                      </div>
+                                      {renderFileActions(file)}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </li>
+                            ))}
+                          </ul>
+                        </section>
+                      ))}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </div>
+
+          {library.otherVideos.length > 0 && (
+            <section className="other-videos-section">
+              <div className="section-heading">
+                <h2>Unsorted</h2>
+                <span>{library.otherVideos.length}</span>
+              </div>
+              <ul className="library-list">
+                {library.otherVideos.map((group) => (
+                  <li className="library-card" key={group.id}>
+                    <p className="download-title">{group.title}</p>
+                    <ul className="file-list compact">
+                      {group.files.map((file) => (
+                        <li className="file-card" key={file.id}>
+                          <div className="file-name-row">
+                            <span>{file.relativePath}</span>
+                          </div>
+                          {renderFileActions(file)}
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </section>
       </section>
     </main>
   );

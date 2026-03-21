@@ -4,8 +4,8 @@ import { randomUUID } from "node:crypto";
 
 import WebTorrent, { type Torrent } from "webtorrent";
 
-import { BrowserMediaTranscoder } from "./browser-media-transcoder.js";
-import { MediaLibrary } from "./media-library.js";
+import { BrowserMediaTranscoder } from "./browser-media-transcoder";
+import { MediaLibrary } from "./media-library";
 
 export type TorrentDownloadStatus =
   | "starting"
@@ -49,6 +49,7 @@ export class TorrentDownloadService {
     private readonly mediaLibrary: MediaLibrary,
     private readonly incompleteDir: string,
     private readonly browserMediaTranscoder: BrowserMediaTranscoder,
+    private readonly onLibraryChanged: () => Promise<void>,
   ) {
     this.client.on("error", (error) => {
       console.error(`WebTorrent client error: ${error.message}`);
@@ -157,6 +158,7 @@ export class TorrentDownloadService {
         record.processingProgress = 1;
         record.processingDetails = "Browser-ready copy completed.";
         record.updatedAt = new Date().toISOString();
+        await this.onLibraryChanged();
         console.log(`Completed torrent ${record.name ?? record.id}`);
       } catch (error) {
         const message =
