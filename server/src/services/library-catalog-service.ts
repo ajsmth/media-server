@@ -274,8 +274,8 @@ export class LibraryCatalogService {
   ): Promise<LibraryFileRecord> {
     const fileId = hashId(`file:${entry.relativePath}`);
     const browserCopyReady = await this.mediaLibrary.hasBrowserMediaFor(entry.relativePath);
-    const sourceUrl = `/library/files/${fileId}/source`;
-    const browserUrl = browserCopyReady ? `/library/files/${fileId}/browser` : null;
+    const sourceUrl = `/api/library/files/${fileId}/source`;
+    const browserUrl = browserCopyReady ? `/api/library/files/${fileId}/browser` : null;
 
     return {
       id: fileId,

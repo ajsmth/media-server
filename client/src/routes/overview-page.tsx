@@ -1,22 +1,13 @@
-import { Film, HardDriveDownload, MonitorPlay, RefreshCw } from "lucide-react";
+import { Film, HardDriveDownload, RefreshCw } from "lucide-react";
 import { Link } from "react-router";
 
 import { useLibrary } from "@/hooks/use-library";
-import { useProjector } from "@/hooks/use-projector";
 import { useTorrents } from "@/hooks/use-torrents";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 
 export function OverviewPage() {
   const { library, libraryStatus, rescanLibraryMutation } = useLibrary();
-  const { adbStatus } = useProjector();
   const { downloads } = useTorrents();
 
   const totalTitles =
@@ -29,172 +20,118 @@ export function OverviewPage() {
   ).length;
 
   return (
-    <div className="grid gap-6">
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card className="bg-[linear-gradient(160deg,rgba(15,95,117,0.97),rgba(30,50,64,0.94))] text-white">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <Badge
-                className="border-white/20 bg-white/10 text-white"
-                variant="outline"
-              >
-                Library
-              </Badge>
-              <Film className="size-5 text-white/75" />
+    <div className="grid gap-8">
+      <section className="grid gap-3">
+        <div className="grid gap-3 rounded-[1.5rem] border border-border/70 bg-white/60 p-4 backdrop-blur md:grid-cols-[repeat(3,minmax(0,1fr))_auto] md:items-center">
+          <div className="rounded-[1.15rem] border border-border/70 bg-white/75 px-4 py-3">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Film className="size-4 text-primary" />
+              Library
             </div>
-            <CardTitle className="text-white">Cataloged titles</CardTitle>
-            <CardDescription className="text-white/72">
-              Movies, shows, and unsorted imports tracked from the media folder.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-4xl font-semibold">{totalTitles}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <Badge variant="secondary">Downloads</Badge>
-              <HardDriveDownload className="size-5 text-primary" />
+            <p className="mt-2 text-2xl font-semibold text-foreground">{totalTitles}</p>
+          </div>
+          <div className="rounded-[1.15rem] border border-border/70 bg-white/75 px-4 py-3">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <HardDriveDownload className="size-4 text-primary" />
+              Active downloads
             </div>
-            <CardTitle>Active intake</CardTitle>
-            <CardDescription>
-              Torrents currently starting, downloading, or converting.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-4xl font-semibold text-foreground">
-              {activeDownloads}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <Badge variant={adbStatus?.connected ? "success" : "outline"}>
-                Projector
-              </Badge>
-              <MonitorPlay className="size-5 text-primary" />
+            <p className="mt-2 text-2xl font-semibold text-foreground">{activeDownloads}</p>
+          </div>
+          <div className="rounded-[1.15rem] border border-border/70 bg-white/75 px-4 py-3">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <RefreshCw className="size-4 text-primary" />
+              Library scan
             </div>
-            <CardTitle>Nebula bridge</CardTitle>
-            <CardDescription>
-              Current ADB state for the projector control path.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-semibold text-foreground">
-              {adbStatus?.connected ? "Connected" : "Disconnected"}
-            </p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {adbStatus ? `${adbStatus.host}:${adbStatus.port}` : "Loading target..."}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <Badge variant="outline">Scan state</Badge>
-              <RefreshCw className="size-5 text-primary" />
-            </div>
-            <CardTitle>Library watcher</CardTitle>
-            <CardDescription>
-              Manual rescan is still available even while live watching is
-              enabled.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-2xl font-semibold capitalize text-foreground">
+            <p className="mt-2 text-2xl font-semibold capitalize text-foreground">
               {libraryStatus?.state ?? "idle"}
             </p>
-            <Button
-              disabled={rescanLibraryMutation.status === "pending"}
-              onClick={() => void rescanLibraryMutation.mutateAsync()}
-              variant="outline"
-            >
-              {rescanLibraryMutation.status === "pending"
-                ? "Rescanning..."
-                : "Rescan now"}
-            </Button>
-          </CardContent>
-        </Card>
+          </div>
+          <Button
+            className="w-full md:w-auto"
+            disabled={rescanLibraryMutation.status === "pending"}
+            onClick={() => void rescanLibraryMutation.mutateAsync()}
+            variant="outline"
+          >
+            {rescanLibraryMutation.status === "pending" ? "Rescanning..." : "Rescan"}
+          </Button>
+        </div>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Next actions</CardTitle>
-            <CardDescription>
-              The app is now split by workflow, so library playback and torrent
-              intake can evolve independently.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-2">
-            <Link to="/library">
-              <div className="rounded-[1.5rem] border border-border bg-secondary/55 p-5 transition-colors hover:bg-secondary/80">
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
-                  Route
-                </p>
-                <p className="mt-3 text-xl font-semibold tracking-tight">
-                  Library
-                </p>
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                  Browse movies and shows, open browser playback, or push a file
-                  to the projector.
-                </p>
-              </div>
-            </Link>
-            <Link to="/downloads">
-              <div className="rounded-[1.5rem] border border-border bg-secondary/55 p-5 transition-colors hover:bg-secondary/80">
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
-                  Route
-                </p>
-                <p className="mt-3 text-xl font-semibold tracking-tight">
-                  Downloads
-                </p>
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                  Submit magnet links and monitor download plus browser-copy
-                  processing.
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+        <div className="rounded-[1.5rem] border border-border/70 bg-white/60 p-4 backdrop-blur">
+          <div className="flex items-center justify-between gap-3 border-b border-border/70 pb-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
+                Routes
+              </p>
+              <h3 className="mt-2 text-xl font-semibold tracking-tight text-foreground">
+                Main actions
+              </h3>
+            </div>
+          </div>
+          <div className="mt-3 grid gap-2">
+            <Link
+              className="flex items-center justify-between rounded-[1.1rem] border border-border/70 bg-white/75 px-4 py-4 transition-colors hover:bg-white"
+              to="/library"
+            >
+              <div>
+                <p className="font-semibold text-foreground">Open library</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Browse folders and launch playback.
                 </p>
               </div>
+              <Badge variant="secondary">{totalTitles}</Badge>
             </Link>
-          </CardContent>
-        </Card>
+            <Link
+              className="flex items-center justify-between rounded-[1.1rem] border border-border/70 bg-white/75 px-4 py-4 transition-colors hover:bg-white"
+              to="/downloads"
+            >
+              <div>
+                <p className="font-semibold text-foreground">Open downloads</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Start torrents and watch the queue.
+                </p>
+              </div>
+              <Badge variant="secondary">{downloads.length}</Badge>
+            </Link>
+          </div>
+        </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent activity</CardTitle>
-            <CardDescription>
-              Quick summary pulled from the current query cache.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {downloads.slice(0, 4).map((download) => (
+        <div className="rounded-[1.5rem] border border-border/70 bg-white/60 p-4 backdrop-blur">
+          <div className="flex items-center justify-between gap-3 border-b border-border/70 pb-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
+                Queue
+              </p>
+              <h3 className="mt-2 text-xl font-semibold tracking-tight text-foreground">
+                Recent activity
+              </h3>
+            </div>
+          </div>
+          <div className="mt-3 grid gap-2">
+            {downloads.slice(0, 5).map((download) => (
               <div
-                className="rounded-2xl border border-border bg-white/65 px-4 py-3"
+                className="flex items-center justify-between gap-3 rounded-[1.1rem] border border-border/70 bg-white/75 px-4 py-3"
                 key={download.id}
               >
-                <div className="flex items-center justify-between gap-3">
-                  <p className="font-medium text-foreground">
-                    {download.name ?? "Fetching metadata..."}
+                <div className="min-w-0">
+                  <p className="truncate font-medium text-foreground">
+                    {download.name ?? "Fetching torrent metadata..."}
                   </p>
-                  <Badge variant="secondary">{download.status}</Badge>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Updated {new Date(download.updatedAt).toLocaleTimeString()}
+                  </p>
                 </div>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Updated {new Date(download.updatedAt).toLocaleTimeString()}
-                </p>
+                <Badge variant="secondary">{download.status}</Badge>
               </div>
             ))}
             {downloads.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No torrent activity yet. Add a magnet link from the downloads
-                route when you are ready.
+              <p className="rounded-[1.1rem] border border-dashed border-border/80 px-4 py-6 text-sm text-muted-foreground">
+                No torrent activity yet.
               </p>
             ) : null}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </section>
     </div>
   );

@@ -1,17 +1,13 @@
-import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
 import type {
-  LibraryEpisodeRecord,
   LibraryFileRecord,
   LibraryMovieRecord,
   LibraryOtherVideoRecord,
+  LibrarySeasonRecord,
   LibraryShowRecord,
 } from "@media-server/shared";
-import { Clapperboard, LoaderCircle, RefreshCw, Tv2, Video } from "lucide-react";
+import { Folder, FolderOpen, LoaderCircle, RefreshCw } from "lucide-react";
 
-import { client } from "@/fetch-client";
-import { BrowserPlayer } from "@/components/library/browser-player";
-import { FileActions } from "@/components/library/file-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,50 +18,143 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useLibrary } from "@/hooks/use-library";
+import { cn } from "@/lib/utils";
 
-function formatEpisodeLabel(episode: LibraryEpisodeRecord) {
-  const suffix = episode.episodeNumbers.map((number) => `E${number}`).join("");
-  return `S${String(episode.seasonNumber).padStart(2, "0")}${suffix}`;
+type ViewerNode = {
+  id: string;
+  label: string;
+  depth: number;
+  files: LibraryFileRecord[];
+  hasChildren?: boolean;
+};
+
+function buildViewerNodes(
+  movies: LibraryMovieRecord[],
+  shows: LibraryShowRecord[],
+  otherVideos: LibraryOtherVideoRecord[],
+) {
+  const nodes: ViewerNode[] = [];
+
+  nodes.push({
+    id: "shows",
+    label: "Shows",
+    depth: 0,
+    files: [],
+    hasChildren: shows.length > 0,
+  });
+
+  for (const show of shows) {
+    nodes.push({
+      id: `show:${show.id}`,
+      label: show.title,
+      depth: 1,
+      files: [],
+      hasChildren: show.seasons.length > 0,
+    });
+
+    for (const season of show.seasons) {
+      nodes.push(buildSeasonNode(show, season));
+    }
+  }
+
+  nodes.push({
+    id: "movies",
+    label: "Movies",
+    depth: 0,
+    files: [],
+    hasChildren: movies.length > 0,
+  });
+
+  for (const movie of movies) {
+    nodes.push({
+      id: `movie:${movie.id}`,
+      label: movie.year ? `${movie.title} (${movie.year})` : movie.title,
+      depth: 1,
+      files: movie.files,
+    });
+  }
+
+  nodes.push({
+    id: "other",
+    label: "Other",
+    depth: 0,
+    files: [],
+    hasChildren: otherVideos.length > 0,
+  });
+
+  for (const group of otherVideos) {
+    nodes.push({
+      id: `other:${group.id}`,
+      label: group.title,
+      depth: 1,
+      files: group.files,
+    });
+  }
+
+  return nodes;
 }
 
-function FileMeta({ file }: { file: LibraryFileRecord }) {
-  return (
-    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-      <Badge variant="outline">{file.basename}</Badge>
-      {file.browserCopyReady ? (
-        <Badge variant="success">Browser ready</Badge>
-      ) : (
-        <Badge variant="secondary">Transcoding if needed</Badge>
-      )}
-      <span>{new Date(file.modifiedAt).toLocaleDateString()}</span>
-    </div>
-  );
+function buildSeasonNode(show: LibraryShowRecord, season: LibrarySeasonRecord): ViewerNode {
+  return {
+    id: `season:${show.id}:${season.id}`,
+    label: `Season ${String(season.seasonNumber).padStart(2, "0")}`,
+    depth: 2,
+    files: season.episodes.flatMap((episode) => episode.files),
+  };
+}
+
+function formatParsedLabel(file: LibraryFileRecord) {
+  const { parsed } = file;
+
+  if (parsed.type === "movie") {
+    return parsed.year ? `${parsed.title} (${parsed.year})` : parsed.title;
+  }
+
+  if (parsed.type === "episode") {
+    const season = parsed.seasonNumber ?? 0;
+    const episodes = parsed.episodeNumbers
+      .map((episodeNumber) => String(episodeNumber).padStart(2, "0"))
+      .join("E");
+
+    return episodes
+      ? `${parsed.title} S${String(season).padStart(2, "0")}E${episodes}`
+      : parsed.title;
+  }
+
+  return parsed.title;
 }
 
 export function LibraryPage() {
-  const {
-    library,
-    libraryQuery,
-    libraryStatus,
-    rescanLibraryMutation,
-  } = useLibrary();
-  const [selectedNebulaFileId, setSelectedNebulaFileId] = useState<string | null>(
-    null,
+  const { library, libraryQuery, libraryStatus, rescanLibraryMutation } =
+    useLibrary();
+
+  const allFiles = useMemo(
+    () =>
+      [
+        ...library.movies.flatMap((movie) => movie.files),
+        ...library.shows.flatMap((show) =>
+          show.seasons.flatMap((season) =>
+            season.episodes.flatMap((episode) => episode.files),
+          ),
+        ),
+        ...library.otherVideos.flatMap((otherVideo) => otherVideo.files),
+      ].sort((left, right) => left.relativePath.localeCompare(right.relativePath)),
+    [library],
   );
-  const [selectedBrowserFile, setSelectedBrowserFile] =
-    useState<LibraryFileRecord | null>(null);
-  const [browserPlaybackError, setBrowserPlaybackError] = useState<
-    string | null
-  >(null);
-  const [nebulaFeedback, setNebulaFeedback] = useState<string | null>(null);
-  const [nebulaError, setNebulaError] = useState<string | null>(null);
 
-  const playFileMutation = useMutation({
-    mutationFn: (fileId: string) => client.playFile(fileId),
-  });
+  const nodes = useMemo(
+    () => buildViewerNodes(library.movies, library.shows, library.otherVideos),
+    [library.movies, library.shows, library.otherVideos],
+  );
+  const [selectedNodeId, setSelectedNodeId] = useState("");
 
-  const totalTitles =
-    library.movies.length + library.shows.length + library.otherVideos.length;
+  useEffect(() => {
+    if (!nodes.some((node) => node.id === selectedNodeId)) {
+      const firstNodeWithFiles = nodes.find((node) => node.files.length > 0);
+      setSelectedNodeId(firstNodeWithFiles?.id ?? nodes[0]?.id ?? "");
+    }
+  }, [nodes, selectedNodeId]);
+
   const libraryError = libraryQuery.isError
     ? libraryQuery.error instanceof Error
       ? libraryQuery.error.message
@@ -76,272 +165,40 @@ export function LibraryPage() {
         : "Failed to rescan library"
       : null;
 
-  async function handlePlayFile(file: LibraryFileRecord) {
-    setSelectedNebulaFileId(file.id);
-    setNebulaError(null);
-    setNebulaFeedback(`Sending ${file.relativePath} to VLC...`);
-
-    try {
-      const payload = await playFileMutation.mutateAsync(file.id);
-      const mediaLaunchOutput =
-        payload.launch.launch.stdout || "No output from media launch.";
-      setNebulaFeedback(
-        `Sent ${file.relativePath} to VLC at ${payload.launch.mediaUrl}. ${mediaLaunchOutput}`,
-      );
-    } catch (error) {
-      setNebulaError(
-        error instanceof Error ? error.message : "Failed to launch VLC",
-      );
-      setNebulaFeedback(null);
-    }
-  }
-
-  async function handlePlayInBrowser(file: LibraryFileRecord) {
-    if (!file.browserUrl) {
-      setBrowserPlaybackError("Browser-ready copy is not available yet.");
-      return;
-    }
-
-    try {
-      await client.ensureBrowserReady(file.browserUrl);
-      setBrowserPlaybackError(null);
-      setSelectedBrowserFile(file);
-    } catch (error) {
-      setBrowserPlaybackError(
-        error instanceof Error
-          ? error.message
-          : "Browser-ready copy is not available yet.",
-      );
-    }
-  }
-
-  function renderMovie(movie: LibraryMovieRecord) {
-    return (
-      <Card key={movie.id}>
-        <CardHeader>
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <CardTitle>{movie.title}</CardTitle>
-              <CardDescription className="mt-2">
-                {movie.year ? `${movie.year}` : "Movie"}
-              </CardDescription>
-            </div>
-            <Badge variant="secondary">{movie.files.length} file(s)</Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="grid gap-4">
-          {movie.files.map((file) => (
-            <div
-              className="rounded-[1.5rem] border border-border bg-white/65 p-4"
-              key={file.id}
-            >
-              <p className="font-medium text-foreground">{file.relativePath}</p>
-              <FileMeta file={file} />
-              <FileActions
-                browserActive={selectedBrowserFile?.id === file.id}
-                file={file}
-                nebulaActive={selectedNebulaFileId === file.id}
-                onBrowser={handlePlayInBrowser}
-                onNebula={handlePlayFile}
-              />
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-    );
-  }
-
-  function renderShow(show: LibraryShowRecord) {
-    return (
-      <Card key={show.id}>
-        <CardHeader>
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <CardTitle>{show.title}</CardTitle>
-              <CardDescription className="mt-2">
-                {show.seasons.length} season(s)
-              </CardDescription>
-            </div>
-            <Badge variant="secondary">{show.seasons.length}</Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {show.seasons.map((season) => (
-            <div
-              className="rounded-[1.5rem] border border-border bg-secondary/50 p-4"
-              key={season.id}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold uppercase tracking-[0.22em] text-primary/70">
-                  Season {season.seasonNumber}
-                </p>
-                <Badge variant="outline">{season.episodes.length} episodes</Badge>
-              </div>
-              <div className="mt-4 grid gap-3">
-                {season.episodes.map((episode) => (
-                  <div
-                    className="rounded-[1.25rem] border border-border bg-white/70 p-4"
-                    key={episode.id}
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="default">{formatEpisodeLabel(episode)}</Badge>
-                      <p className="font-medium text-foreground">
-                        {episode.title || "Episode"}
-                      </p>
-                    </div>
-                    <div className="mt-3 grid gap-3">
-                      {episode.files.map((file) => (
-                        <div key={file.id}>
-                          <p className="text-sm text-muted-foreground">
-                            {file.relativePath}
-                          </p>
-                          <FileMeta file={file} />
-                          <FileActions
-                            browserActive={selectedBrowserFile?.id === file.id}
-                            file={file}
-                            nebulaActive={selectedNebulaFileId === file.id}
-                            onBrowser={handlePlayInBrowser}
-                            onNebula={handlePlayFile}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-    );
-  }
-
-  function renderOtherVideo(otherVideo: LibraryOtherVideoRecord) {
-    return (
-      <Card key={otherVideo.id}>
-        <CardHeader>
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <CardTitle>{otherVideo.title}</CardTitle>
-              <CardDescription className="mt-2">
-                Unsorted import
-              </CardDescription>
-            </div>
-            <Badge variant="outline">{otherVideo.files.length}</Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="grid gap-4">
-          {otherVideo.files.map((file) => (
-            <div
-              className="rounded-[1.5rem] border border-border bg-white/65 p-4"
-              key={file.id}
-            >
-              <p className="font-medium text-foreground">{file.relativePath}</p>
-              <FileMeta file={file} />
-              <FileActions
-                browserActive={selectedBrowserFile?.id === file.id}
-                file={file}
-                nebulaActive={selectedNebulaFileId === file.id}
-                onBrowser={handlePlayInBrowser}
-                onNebula={handlePlayFile}
-              />
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-    );
-  }
-
   return (
     <div className="grid gap-6">
-      <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <Card className="bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(249,243,234,0.92))]">
-          <CardHeader className="gap-5 md:flex-row md:items-start md:justify-between">
-            <div>
-              <div className="flex items-center gap-3">
-                <Badge variant="default">Managed index</Badge>
-                <span className="text-sm text-muted-foreground">
-                  {totalTitles} titles
-                </span>
-              </div>
-              <CardTitle className="mt-4">Media library</CardTitle>
-              <CardDescription className="mt-2">
-                The app now treats library browsing as its own route, with
-                movies, shows, and unsorted imports grouped separately.
-              </CardDescription>
-            </div>
-            <Button
-              disabled={rescanLibraryMutation.status === "pending"}
-              onClick={() => void rescanLibraryMutation.mutateAsync()}
-              variant="outline"
-            >
-              {rescanLibraryMutation.status === "pending" ? (
-                <>
-                  <LoaderCircle className="animate-spin" />
-                  Rescanning
-                </>
-              ) : (
-                <>
-                  <RefreshCw />
-                  Rescan library
-                </>
-              )}
-            </Button>
-          </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-3">
-            <div className="rounded-[1.5rem] bg-secondary/60 p-4">
-              <div className="flex items-center gap-3">
-                <Clapperboard className="size-4 text-primary" />
-                <p className="text-sm font-medium">Movies</p>
-              </div>
-              <p className="mt-3 text-3xl font-semibold">{library.movies.length}</p>
-            </div>
-            <div className="rounded-[1.5rem] bg-secondary/60 p-4">
-              <div className="flex items-center gap-3">
-                <Tv2 className="size-4 text-primary" />
-                <p className="text-sm font-medium">Shows</p>
-              </div>
-              <p className="mt-3 text-3xl font-semibold">{library.shows.length}</p>
-            </div>
-            <div className="rounded-[1.5rem] bg-secondary/60 p-4">
-              <div className="flex items-center gap-3">
-                <Video className="size-4 text-primary" />
-                <p className="text-sm font-medium">Unsorted</p>
-              </div>
-              <p className="mt-3 text-3xl font-semibold">
-                {library.otherVideos.length}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-[linear-gradient(145deg,rgba(15,95,117,0.96),rgba(18,30,40,0.96))] text-white">
-          <CardHeader>
-            <Badge
-              className="w-fit border-white/15 bg-white/10 text-white"
-              variant="outline"
-            >
-              Playback path
-            </Badge>
-            <CardTitle className="text-white">VLC + browser outputs</CardTitle>
-            <CardDescription className="text-white/72">
-              Send cataloged files straight to the projector or open the
-              browser-safe version here.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm text-white/82">
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-              Browser playback probes the generated browser copy before opening.
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-              Nebula playback sends the selected file id to the backend, which
-              resolves the media URL and launches VLC over ADB.
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-              Library scan state: {libraryStatus?.state ?? "idle"}
-            </div>
-          </CardContent>
-        </Card>
+      <section className="flex flex-col gap-4 rounded-[1.5rem] border border-border/70 bg-white/60 p-4 backdrop-blur md:flex-row md:items-center md:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="default">Library</Badge>
+            <span className="text-sm text-muted-foreground">
+              {library.shows.length} shows, {library.movies.length} movies, {allFiles.length} files
+            </span>
+          </div>
+          <h3 className="mt-3 text-2xl font-semibold tracking-tight text-foreground">
+            Media viewer
+          </h3>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Shows are grouped into virtual directories.
+          </p>
+        </div>
+        <Button
+          disabled={rescanLibraryMutation.status === "pending"}
+          onClick={() => void rescanLibraryMutation.mutateAsync()}
+          variant="outline"
+        >
+          {rescanLibraryMutation.status === "pending" ? (
+            <>
+              <LoaderCircle className="animate-spin" />
+              Rescanning
+            </>
+          ) : (
+            <>
+              <RefreshCw />
+              Rescan library
+            </>
+          )}
+        </Button>
       </section>
 
       {libraryStatus?.state === "scanning" ? (
@@ -349,128 +206,78 @@ export function LibraryPage() {
           Scanning media folder...
         </p>
       ) : null}
+
       {libraryStatus?.lastError ? (
         <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {libraryStatus.lastError}
         </p>
       ) : null}
+
       {libraryError ? (
         <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {libraryError}
         </p>
       ) : null}
-      {nebulaFeedback ? (
-        <p className="rounded-2xl border border-primary/10 bg-primary/10 px-4 py-3 text-sm text-primary">
-          {nebulaFeedback}
-        </p>
-      ) : null}
-      {nebulaError ? (
-        <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {nebulaError}
-        </p>
-      ) : null}
 
-      {selectedBrowserFile ? (
-        <BrowserPlayer
-          error={browserPlaybackError}
-          file={selectedBrowserFile}
-          onVideoError={() =>
-            setBrowserPlaybackError(
-              "The browser-safe copy could not be played. It may still be transcoding.",
-            )
-          }
-        />
-      ) : null}
+      <section>
+        <Card className="bg-white/60">
+          <CardHeader>
+            <CardTitle>Folder viewer</CardTitle>
+            <CardDescription>
+              Grouped by shows, seasons, movies, and other videos.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-1">
+            {nodes.map((node) => (
+              <div className="grid gap-2" key={node.id}>
+                <button
+                  className={cn(
+                    "flex items-center gap-2 rounded-[1rem] px-3 py-2 text-left text-sm transition-colors",
+                    selectedNodeId === node.id
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-white/80 hover:text-foreground",
+                  )}
+                  onClick={() => setSelectedNodeId(node.id)}
+                  style={{ paddingLeft: `${12 + node.depth * 16}px` }}
+                  type="button"
+                >
+                  {selectedNodeId === node.id ? (
+                    <FolderOpen className="size-4 shrink-0" />
+                  ) : (
+                    <Folder className="size-4 shrink-0" />
+                  )}
+                  <span className="truncate">{node.label}</span>
+                  <span className="ml-auto text-xs opacity-70">{node.files.length}</span>
+                </button>
 
-      <section className="grid gap-6 xl:grid-cols-2">
-        <div className="grid gap-4">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
-                Collection
-              </p>
-              <h3 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
-                Movies
-              </h3>
-            </div>
-            <Badge variant="secondary">{library.movies.length}</Badge>
-          </div>
-          {libraryQuery.status === "pending" ? (
-            <Card>
-              <CardHeader>
-                <CardTitle>Loading movies...</CardTitle>
-              </CardHeader>
-            </Card>
-          ) : library.movies.length === 0 ? (
-            <Card>
-              <CardHeader>
-                <CardTitle>No movies imported yet</CardTitle>
-                <CardDescription>
-                  Drop files into `/media` or import them through the torrent
-                  flow.
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          ) : (
-            library.movies.map(renderMovie)
-          )}
-        </div>
-
-        <div className="grid gap-4">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
-                Collection
-              </p>
-              <h3 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
-                Shows
-              </h3>
-            </div>
-            <Badge variant="secondary">{library.shows.length}</Badge>
-          </div>
-          {library.shows.length === 0 ? (
-            <Card>
-              <CardHeader>
-                <CardTitle>No shows imported yet</CardTitle>
-                <CardDescription>
-                  Season-aware imports will appear here once the parser
-                  classifies them.
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          ) : (
-            library.shows.map(renderShow)
-          )}
-        </div>
-      </section>
-
-      <section className="grid gap-4">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
-              Review
-            </p>
-            <h3 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
-              Unsorted imports
-            </h3>
-          </div>
-          <Badge variant="outline">{library.otherVideos.length}</Badge>
-        </div>
-        {library.otherVideos.length === 0 ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>Nothing needs review right now</CardTitle>
-              <CardDescription>
-                Files that do not cleanly parse into movies or shows will land
-                here.
-              </CardDescription>
-            </CardHeader>
-          </Card>
-        ) : (
-          <div className="grid gap-4 xl:grid-cols-2">
-            {library.otherVideos.map(renderOtherVideo)}
-          </div>
-        )}
+                {selectedNodeId === node.id ? (
+                  node.files.length ? (
+                    <div className="grid gap-2">
+                      {node.files.map((file) => (
+                        <div
+                          className="rounded-[1rem] border border-border/70 bg-white/75 px-4 py-3"
+                          key={file.id}
+                          style={{ marginLeft: `${28 + node.depth * 16}px` }}
+                        >
+                          <p className="font-medium text-foreground">
+                            {formatParsedLabel(file)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : node.hasChildren ? null : (
+                    <p
+                      className="rounded-[1rem] border border-dashed border-border/80 px-4 py-6 text-sm text-muted-foreground"
+                      style={{ marginLeft: `${28 + node.depth * 16}px` }}
+                    >
+                      No files in this group.
+                    </p>
+                  )
+                ) : null}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
       </section>
     </div>
   );

@@ -1,109 +1,53 @@
-import { LoaderCircle, Radio, Wifi } from "lucide-react";
+import { LoaderCircle, Wifi } from "lucide-react";
 
 import { useProjector } from "@/hooks/use-projector";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 
 export function ProjectorStatusCard() {
-  const { adbStatus, connectAdbMutation, launchVlcMutation } = useProjector();
+  const { adbStatus, connectAdbMutation } = useProjector();
 
   const projectorState = adbStatus?.connected ? "Connected" : "Disconnected";
+  const isBusy = connectAdbMutation.status === "pending";
 
   return (
-    <Card className="overflow-hidden border-primary/10 bg-white/72">
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
-              Projector
-            </p>
-            <CardTitle className="mt-2">Nebula control</CardTitle>
-            <CardDescription className="mt-1">
-              Keep the ADB bridge warm and bring VLC forward before sending a
-              title from the library.
-            </CardDescription>
-          </div>
-          <Badge variant={adbStatus?.connected ? "success" : "outline"}>
-            {projectorState}
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <dl className="grid gap-3 text-sm sm:grid-cols-3">
-          <div className="rounded-2xl bg-secondary/70 p-3">
-            <dt className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-              Target
-            </dt>
-            <dd className="mt-2 font-medium text-foreground">
-              {adbStatus ? `${adbStatus.host}:${adbStatus.port}` : "Loading..."}
-            </dd>
-          </div>
-          <div className="rounded-2xl bg-secondary/70 p-3">
-            <dt className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-              Serial
-            </dt>
-            <dd className="mt-2 font-medium text-foreground">
-              {adbStatus?.serial ?? "Pending"}
-            </dd>
-          </div>
-          <div className="rounded-2xl bg-secondary/70 p-3">
-            <dt className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-              Bridge
-            </dt>
-            <dd className="mt-2 flex items-center gap-2 font-medium text-foreground">
-              {adbStatus?.connected ? (
-                <Wifi className="size-4 text-emerald-600" />
-              ) : (
-                <Radio className="size-4 text-amber-600" />
-              )}
-              {projectorState}
-            </dd>
-          </div>
-        </dl>
+    <div className="rounded-[1.5rem] border border-border/70 bg-white/70 p-3 shadow-[0_18px_50px_rgba(66,44,22,0.08)] backdrop-blur">
+      <div className="px-3 pb-3 pt-1">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-primary/70">
+          Projector / Nebula
+        </p>
+      </div>
 
+      <button
+        className="flex w-full items-center justify-between gap-4 rounded-[1.2rem] border border-border/70 bg-white/80 px-4 py-4 text-left transition-colors hover:bg-white disabled:cursor-wait"
+        disabled={isBusy}
+        onClick={() => void connectAdbMutation.mutateAsync()}
+        type="button"
+      >
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`size-2.5 rounded-full ${
+                adbStatus?.connected ? "bg-emerald-500" : "bg-amber-500"
+              }`}
+            />
+            <p className="text-base font-semibold text-foreground">
+              {isBusy ? "Reconnecting..." : projectorState}
+            </p>
+          </div>
+        </div>
+        {isBusy ? (
+          <LoaderCircle className="size-4 shrink-0 animate-spin text-primary" />
+        ) : (
+          <Wifi className="size-4 shrink-0 text-primary" />
+        )}
+      </button>
+
+      <div className="space-y-3 px-3 pb-1 pt-3">
         {adbStatus?.lastError ? (
           <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {adbStatus.lastError}
           </p>
         ) : null}
-
-        <div className="flex flex-wrap gap-3">
-          <Button
-            disabled={connectAdbMutation.status === "pending"}
-            onClick={() => void connectAdbMutation.mutateAsync()}
-          >
-            {connectAdbMutation.status === "pending" ? (
-              <>
-                <LoaderCircle className="animate-spin" />
-                Connecting
-              </>
-            ) : (
-              "Connect projector"
-            )}
-          </Button>
-          <Button
-            disabled={launchVlcMutation.status === "pending"}
-            onClick={() => void launchVlcMutation.mutateAsync()}
-            variant="outline"
-          >
-            {launchVlcMutation.status === "pending" ? (
-              <>
-                <LoaderCircle className="animate-spin" />
-                Launching VLC
-              </>
-            ) : (
-              "Launch VLC"
-            )}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

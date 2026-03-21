@@ -85,26 +85,26 @@ function jsonRequestInit(body: unknown): RequestInit {
 
 export const client = {
   getLibrary(): Promise<LibraryCatalogSnapshot> {
-    return request("/library", undefined, "Unable to load the media library from the backend.");
+    return request("/api/library", undefined, "Unable to load the media library from the backend.");
   },
 
   getLibraryStatus(): Promise<LibraryCatalogStatus> {
-    return request("/library/status", undefined, "Unable to load library scan status.");
+    return request("/api/library/status", undefined, "Unable to load library scan status.");
   },
 
   getAdbStatus(): Promise<AdbStatus> {
-    return request("/adb/status", undefined, "Unable to load projector connection status.");
+    return request("/api/adb/status", undefined, "Unable to load projector connection status.");
   },
 
   getTorrents(): Promise<TorrentDownloadRecord[]> {
-    return request("/torrents", undefined, "Unable to load torrent activity from the backend.");
+    return request("/api/torrents", undefined, "Unable to load torrent activity from the backend.");
   },
 
   playFile(fileId: string): Promise<PlayResponse> {
     const body: PlayRequestBody = { fileId };
 
     return request(
-      "/play",
+      "/api/play",
       {
         method: "POST",
         ...jsonRequestInit(body),
@@ -115,7 +115,7 @@ export const client = {
 
   launchVlc(): Promise<LaunchVlcResponse> {
     return request(
-      "/vlc/launch",
+      "/api/vlc/launch",
       { method: "POST" },
       "Failed to launch VLC",
     );
@@ -123,7 +123,7 @@ export const client = {
 
   rescanLibrary(): Promise<LibraryCatalogSnapshot> {
     return request(
-      "/library/rescan",
+      "/api/library/rescan",
       { method: "POST" },
       "Failed to rescan library",
     );
@@ -133,7 +133,7 @@ export const client = {
     const body: CreateTorrentRequestBody = { magnetLink };
 
     return request(
-      "/torrents",
+      "/api/torrents",
       {
         method: "POST",
         ...jsonRequestInit(body),
@@ -144,7 +144,7 @@ export const client = {
 
   cancelTorrent(id: string): Promise<TorrentDownloadRecord> {
     return request(
-      `/torrents/${id}`,
+      `/api/torrents/${id}`,
       { method: "DELETE" },
       "Failed to cancel torrent download",
     );
@@ -152,7 +152,7 @@ export const client = {
 
   connectAdb(): Promise<AdbStatus> {
     return request(
-      "/adb/connect",
+      "/api/adb/connect",
       { method: "POST" },
       "Unable to connect to projector",
     );

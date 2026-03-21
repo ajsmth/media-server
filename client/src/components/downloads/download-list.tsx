@@ -2,13 +2,6 @@ import type { TorrentDownloadRecord } from "@media-server/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 
 function formatProgress(download: TorrentDownloadRecord) {
@@ -43,15 +36,9 @@ type DownloadListProps = {
 export function DownloadList({ downloads, onCancel }: DownloadListProps) {
   if (downloads.length === 0) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Queue is clear</CardTitle>
-          <CardDescription>
-            New torrent activity will appear here as soon as you submit a
-            magnet link.
-          </CardDescription>
-        </CardHeader>
-      </Card>
+      <div className="rounded-[1.5rem] border border-dashed border-border/80 bg-white/55 px-5 py-8 text-sm text-muted-foreground">
+        Queue is clear.
+      </div>
     );
   }
 
@@ -62,52 +49,45 @@ export function DownloadList({ downloads, onCancel }: DownloadListProps) {
           download.status === "starting" || download.status === "downloading";
 
         return (
-          <Card key={download.id}>
-            <CardHeader className="gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div>
+          <div
+            className="rounded-[1.4rem] border border-border/70 bg-white/65 p-4 shadow-[0_16px_40px_rgba(66,44,22,0.05)] backdrop-blur"
+            key={download.id}
+          >
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-3">
-                  <CardTitle className="text-base">
+                  <p className="text-base font-semibold text-foreground">
                     {download.name ?? "Fetching torrent metadata..."}
-                  </CardTitle>
+                  </p>
                   <Badge variant={statusVariant(download.status)}>
                     {download.status}
                   </Badge>
                 </div>
-                <CardDescription className="mt-2">
+                <p className="mt-2 text-sm text-muted-foreground">
                   {formatProgress(download)}
                   {" · "}
                   {download.status === "processing"
-                    ? "Preparing browser copy"
+                    ? "Post-processing"
                     : download.totalBytes
                       ? `${Math.round(download.downloadSpeed / 1024)} KB/s`
                       : "Waiting for peers"}
-                </CardDescription>
+                </p>
               </div>
               {isCancelable ? (
                 <Button onClick={() => onCancel(download.id)} variant="outline">
                   Cancel
                 </Button>
               ) : null}
-            </CardHeader>
-            <CardContent className="space-y-4">
+            </div>
+            <div className="mt-4 space-y-4">
               <Progress value={download.progress * 100} />
-              {download.processingDetails ? (
-                <p className="text-sm text-muted-foreground">
-                  {download.processingDetails}
-                </p>
-              ) : null}
-              {download.browserCopyPath ? (
-                <p className="text-sm text-muted-foreground">
-                  Browser copy: {download.browserCopyPath}
-                </p>
-              ) : null}
               {download.errorMessage ? (
                 <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                   {download.errorMessage}
                 </p>
               ) : null}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         );
       })}
     </div>

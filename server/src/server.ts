@@ -54,16 +54,16 @@ app.use(express.json());
 app.use("/media", express.static(config.mediaDir));
 app.use(express.static(config.clientDistDir));
 
-app.get("/library", (_req, res) => {
+app.get("/api/library", (_req, res) => {
   res.json(libraryCatalog.getSnapshot());
 });
 
-app.get("/library/status", (_req, res) => {
+app.get("/api/library/status", (_req, res) => {
   res.json(libraryCatalog.getStatus());
 });
 
 app.post(
-  "/library/rescan",
+  "/api/library/rescan",
   async (
     _req: express.Request<Record<string, never>, LibraryCatalogSnapshot | ErrorResponse>,
     res,
@@ -78,7 +78,7 @@ app.post(
   },
 );
 
-app.get("/library/files/:fileId/source", async (req, res, next) => {
+app.get("/api/library/files/:fileId/source", async (req, res, next) => {
   try {
     const existingFile = await libraryCatalog.resolveSourceFilePath(req.params.fileId);
 
@@ -94,7 +94,7 @@ app.get("/library/files/:fileId/source", async (req, res, next) => {
 });
 
 app.get(
-  "/library/files/:fileId/browser",
+  "/api/library/files/:fileId/browser",
   async (req: express.Request<LibraryFileParams>, res, next) => {
     try {
       const existingFile = await libraryCatalog.resolveBrowserFilePath(req.params.fileId);
@@ -111,7 +111,7 @@ app.get(
   },
 );
 
-app.get("/adb/status", async (_req, res, next) => {
+app.get("/api/adb/status", async (_req, res, next) => {
   try {
     const status = await androidDeviceClient.getStatus();
     res.json(status);
@@ -121,7 +121,7 @@ app.get("/adb/status", async (_req, res, next) => {
 });
 
 app.post(
-  "/adb/connect",
+  "/api/adb/connect",
   async (
     _req: express.Request<Record<string, never>, AdbStatus>,
     res,
@@ -138,7 +138,7 @@ app.post(
 );
 
 app.post(
-  "/play",
+  "/api/play",
   async (
     req: express.Request<Record<string, never>, PlayResponse | ErrorResponse, PlayRequestBody>,
     res,
@@ -176,7 +176,7 @@ app.post(
 );
 
 app.post(
-  "/vlc/launch",
+  "/api/vlc/launch",
   async (_req: express.Request<Record<string, never>, LaunchVlcResponse>, res, next) => {
     try {
       console.log("Launching VLC app");
@@ -190,13 +190,13 @@ app.post(
   },
 );
 
-app.get("/torrents", (_req, res) => {
+app.get("/api/torrents", (_req, res) => {
   const downloads = torrentDownloadService.listDownloads();
   res.json(downloads);
 });
 
 app.post(
-  "/torrents",
+  "/api/torrents",
   async (
     req: express.Request<Record<string, never>, TorrentDownloadRecord, CreateTorrentRequestBody>,
     res,
@@ -219,7 +219,7 @@ app.post(
 );
 
 app.delete(
-  "/torrents/:id",
+  "/api/torrents/:id",
   async (req: express.Request<TorrentParams>, res, next) => {
     try {
       const download = await torrentDownloadService.cancelDownload(req.params.id);

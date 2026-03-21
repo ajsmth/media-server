@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, LoaderCircle, WandSparkles } from "lucide-react";
+import { Download, LoaderCircle } from "lucide-react";
 
 import { useLibrary } from "@/hooks/use-library";
 import { useTorrents } from "@/hooks/use-torrents";
@@ -60,17 +60,16 @@ export function DownloadsPage() {
 
   return (
     <div className="grid gap-6">
-      <section className="grid gap-6 xl:grid-cols-[460px_minmax(0,1fr)]">
-        <Card className="bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(249,243,234,0.92))]">
+      <section className="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
+        <Card className="bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(249,243,234,0.92))]">
           <CardHeader>
             <div className="flex items-center justify-between">
-              <Badge variant="default">Intake</Badge>
+              <Badge variant="default">New download</Badge>
               <Download className="size-5 text-primary" />
             </div>
             <CardTitle>Drop a magnet link</CardTitle>
             <CardDescription>
-              Start the torrent, import the result into the media library, and
-              keep the browser-safe copy pipeline visible.
+              Start a torrent and let the queue handle the rest.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -108,32 +107,41 @@ export function DownloadsPage() {
           </CardContent>
         </Card>
 
-        <Card className="bg-[linear-gradient(145deg,rgba(15,95,117,0.96),rgba(18,30,40,0.96))] text-white">
+        <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <Badge
-                className="border-white/15 bg-white/10 text-white"
-                variant="outline"
-              >
-                Pipeline
-              </Badge>
-              <WandSparkles className="size-5 text-white/70" />
+              <Badge variant="secondary">Queue</Badge>
+              <span className="text-sm text-muted-foreground">
+                {downloads.length} item{downloads.length === 1 ? "" : "s"}
+              </span>
             </div>
-            <CardTitle className="text-white">How intake flows now</CardTitle>
-            <CardDescription className="text-white/72">
-              Torrents are no longer a side panel on the library page. This
-              route owns the queue and import lifecycle.
+            <CardTitle>What matters here</CardTitle>
+            <CardDescription>
+              Current downloads, transfer progress, and any failures.
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-3 text-sm text-white/80">
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-              1. Submit the magnet link.
+          <CardContent className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-[1.1rem] bg-secondary/55 px-4 py-4">
+              <p className="text-sm text-muted-foreground">Active</p>
+              <p className="mt-2 text-2xl font-semibold text-foreground">
+                {
+                  downloads.filter((download) =>
+                    ["starting", "downloading", "processing"].includes(download.status),
+                  ).length
+                }
+              </p>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-              2. Track download and post-processing here.
+            <div className="rounded-[1.1rem] bg-secondary/55 px-4 py-4">
+              <p className="text-sm text-muted-foreground">Completed</p>
+              <p className="mt-2 text-2xl font-semibold text-foreground">
+                {downloads.filter((download) => download.status === "completed").length}
+              </p>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-              3. Open the library route when the new title lands.
+            <div className="rounded-[1.1rem] bg-secondary/55 px-4 py-4">
+              <p className="text-sm text-muted-foreground">Errors</p>
+              <p className="mt-2 text-2xl font-semibold text-foreground">
+                {downloads.filter((download) => download.status === "error").length}
+              </p>
             </div>
           </CardContent>
         </Card>

@@ -7,38 +7,26 @@ const navigationItems = [
   {
     to: "/",
     label: "Overview",
-    description: "System health and quick actions",
+    description: "Main actions and status",
     icon: Gauge,
   },
   {
     to: "/library",
     label: "Library",
-    description: "Movies, shows, browser playback, projector send",
+    description: "Folder browser and playback",
     icon: Clapperboard,
   },
   {
     to: "/downloads",
     label: "Downloads",
-    description: "Add torrents and monitor processing",
+    description: "Queue and errors",
     icon: Download,
   },
 ];
 
 export function AppSidebar() {
   return (
-    <aside className="flex flex-col gap-6 rounded-[2rem] border border-border/70 bg-white/60 p-5 shadow-[0_30px_80px_rgba(88,61,26,0.08)] backdrop-blur md:sticky md:top-6 md:h-[calc(100vh-3rem)]">
-      <div className="rounded-[1.5rem] bg-[linear-gradient(135deg,rgba(15,95,117,0.95),rgba(223,122,63,0.88))] p-5 text-white">
-        <p className="text-xs font-semibold uppercase tracking-[0.28em] text-white/70">
-          Projector stack
-        </p>
-        <h1 className="mt-3 text-2xl font-semibold tracking-tight">
-          Media control
-        </h1>
-        <p className="mt-2 text-sm leading-relaxed text-white/82">
-          Library import, torrent intake, and projector playback in one place.
-        </p>
-      </div>
-
+    <aside className="flex flex-col gap-6 rounded-[1.75rem] border border-border/70 bg-white/60 p-4 shadow-[0_24px_70px_rgba(88,61,26,0.08)] backdrop-blur md:sticky md:top-6 md:h-[calc(100vh-3rem)]">
       <nav className="grid gap-2">
         {navigationItems.map((item) => {
           const Icon = item.icon;
@@ -47,7 +35,7 @@ export function AppSidebar() {
             <NavLink
               className={({ isActive }) =>
                 cn(
-                  "group rounded-[1.4rem] border border-transparent px-4 py-4 transition-colors",
+                  "group rounded-[1.1rem] border border-transparent px-4 py-3 transition-colors",
                   isActive
                     ? "border-primary/15 bg-primary/10 text-primary"
                     : "text-muted-foreground hover:border-border hover:bg-white/65 hover:text-foreground",
