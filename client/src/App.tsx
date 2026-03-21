@@ -1,131 +1,17 @@
 import { useEffect, useState } from "react";
+import type {
+  AdbStatus,
+  LaunchVlcResponse,
+  LibraryCatalogSnapshot,
+  LibraryCatalogStatus,
+  LibraryFileRecord,
+  PlayResponse,
+  TorrentDownloadRecord,
+} from "@media-server/shared";
 
 type LoadState = "idle" | "loading" | "error";
-type TorrentDownload = {
-  id: string;
-  magnetLink: string;
-  name: string | null;
-  infoHash: string | null;
-  status:
-    | "starting"
-    | "downloading"
-    | "processing"
-    | "completed"
-    | "cancelled"
-    | "error";
-  progress: number;
-  downloadedBytes: number;
-  totalBytes: number | null;
-  downloadSpeed: number;
-  processingProgress: number | null;
-  processingDetails: string | null;
-  browserCopyPath: string | null;
-  errorMessage: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
 
-type AdbStatus = {
-  host: string;
-  port: number;
-  serial: string;
-  connected: boolean;
-  lastError: string | null;
-};
-
-type LibraryFile = {
-  id: string;
-  relativePath: string;
-  basename: string;
-  sizeBytes: number;
-  modifiedAt: string;
-  sourceUrl: string;
-  browserUrl: string | null;
-  browserCopyReady: boolean;
-  parsed: {
-    rawName: string;
-    title: string;
-    normalizedTitle: string;
-    type: "movie" | "episode" | "other";
-    year: number | null;
-    seasonNumber: number | null;
-    episodeNumbers: number[];
-    tags: string[];
-    confidence: "high" | "medium" | "low";
-  };
-};
-
-type LibraryMovie = {
-  id: string;
-  title: string;
-  sortTitle: string;
-  year: number | null;
-  files: LibraryFile[];
-};
-
-type LibraryEpisode = {
-  id: string;
-  title: string;
-  seasonNumber: number;
-  episodeNumbers: number[];
-  files: LibraryFile[];
-};
-
-type LibrarySeason = {
-  id: string;
-  seasonNumber: number;
-  episodes: LibraryEpisode[];
-};
-
-type LibraryShow = {
-  id: string;
-  title: string;
-  sortTitle: string;
-  seasons: LibrarySeason[];
-};
-
-type LibraryOtherVideo = {
-  id: string;
-  title: string;
-  files: LibraryFile[];
-};
-
-type LibraryCatalog = {
-  generatedAt: string;
-  lastScanAt: string | null;
-  movies: LibraryMovie[];
-  shows: LibraryShow[];
-  otherVideos: LibraryOtherVideo[];
-};
-
-type LibraryStatus = {
-  state: "idle" | "scanning" | "error";
-  lastScanAt: string | null;
-  lastError: string | null;
-  watchEnabled: boolean;
-};
-
-type PlayResponse = {
-  status: "playing";
-  fileId: string;
-  launch: {
-    mediaUrl: string;
-    launch: {
-      command: string;
-      stdout: string;
-    };
-  };
-};
-
-type LaunchVlcResponse = {
-  status: "launched";
-  launch: {
-    command: string;
-    stdout: string;
-  };
-};
-
-const EMPTY_LIBRARY: LibraryCatalog = {
+const EMPTY_LIBRARY: LibraryCatalogSnapshot = {
   generatedAt: new Date(0).toISOString(),
   lastScanAt: null,
   movies: [],
@@ -134,15 +20,15 @@ const EMPTY_LIBRARY: LibraryCatalog = {
 };
 
 export default function App() {
-  const [library, setLibrary] = useState<LibraryCatalog>(EMPTY_LIBRARY);
+  const [library, setLibrary] = useState<LibraryCatalogSnapshot>(EMPTY_LIBRARY);
   const [selectedNebulaFileId, setSelectedNebulaFileId] = useState<string | null>(null);
-  const [selectedBrowserFile, setSelectedBrowserFile] = useState<LibraryFile | null>(null);
+  const [selectedBrowserFile, setSelectedBrowserFile] = useState<LibraryFileRecord | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("idle");
-  const [libraryStatus, setLibraryStatus] = useState<LibraryStatus | null>(null);
+  const [libraryStatus, setLibraryStatus] = useState<LibraryCatalogStatus | null>(null);
   const [isRescanningLibrary, setIsRescanningLibrary] = useState(false);
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [magnetLink, setMagnetLink] = useState("");
-  const [downloads, setDownloads] = useState<TorrentDownload[]>([]);
+  const [downloads, setDownloads] = useState<TorrentDownloadRecord[]>([]);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [isSubmittingTorrent, setIsSubmittingTorrent] = useState(false);
   const [browserPlaybackError, setBrowserPlaybackError] = useState<string | null>(
@@ -161,7 +47,7 @@ export default function App() {
     async function refreshLibrary() {
       try {
         const response = await fetch("/library");
-        const nextLibrary = (await response.json()) as LibraryCatalog;
+        const nextLibrary = (await response.json()) as LibraryCatalogSnapshot;
 
         if (isMounted) {
           setLibrary(nextLibrary);
@@ -199,7 +85,7 @@ export default function App() {
     async function loadLibraryStatus() {
       try {
         const response = await fetch("/library/status");
-        const nextStatus = (await response.json()) as LibraryStatus;
+        const nextStatus = (await response.json()) as LibraryCatalogStatus;
 
         if (isMounted) {
           setLibraryStatus(nextStatus);
@@ -279,7 +165,7 @@ export default function App() {
     async function loadDownloads() {
       try {
         const response = await fetch("/torrents");
-        const nextDownloads = (await response.json()) as TorrentDownload[];
+        const nextDownloads = (await response.json()) as TorrentDownloadRecord[];
         if (isMounted) {
           setDownloads(nextDownloads);
         }
@@ -304,11 +190,11 @@ export default function App() {
 
   async function refreshLibraryNow() {
     const response = await fetch("/library");
-    const nextLibrary = (await response.json()) as LibraryCatalog;
+    const nextLibrary = (await response.json()) as LibraryCatalogSnapshot;
     setLibrary(nextLibrary);
   }
 
-  async function playFile(file: LibraryFile) {
+  async function playFile(file: LibraryFileRecord) {
     setSelectedNebulaFileId(file.id);
     setNebulaError(null);
     setNebulaFeedback(`Sending ${file.relativePath} to VLC...`);
@@ -381,11 +267,11 @@ export default function App() {
         throw new Error(await readErrorMessage(response, "Failed to rescan library"));
       }
 
-      const nextLibrary = (await response.json()) as LibraryCatalog;
+      const nextLibrary = (await response.json()) as LibraryCatalogSnapshot;
       setLibrary(nextLibrary);
 
       const statusResponse = await fetch("/library/status");
-      const nextStatus = (await statusResponse.json()) as LibraryStatus;
+      const nextStatus = (await statusResponse.json()) as LibraryCatalogStatus;
       setLibraryStatus(nextStatus);
     } catch (error) {
       setLibraryError(
@@ -422,7 +308,7 @@ export default function App() {
         );
       }
 
-      const createdDownload = (await response.json()) as TorrentDownload;
+      const createdDownload = (await response.json()) as TorrentDownloadRecord;
       setDownloads((currentDownloads) => [createdDownload, ...currentDownloads]);
       setMagnetLink("");
       await refreshLibraryNow();
@@ -448,7 +334,7 @@ export default function App() {
         );
       }
 
-      const updatedDownload = (await response.json()) as TorrentDownload;
+      const updatedDownload = (await response.json()) as TorrentDownloadRecord;
       setDownloads((currentDownloads) =>
         currentDownloads.map((download) =>
           download.id === updatedDownload.id ? updatedDownload : download,
@@ -461,7 +347,7 @@ export default function App() {
     }
   }
 
-  async function playInBrowser(file: LibraryFile) {
+  async function playInBrowser(file: LibraryFileRecord) {
     if (!file.browserUrl) {
       setBrowserPlaybackError("Browser-ready copy is not available yet.");
       return;
@@ -513,7 +399,7 @@ export default function App() {
     }
   }
 
-  function formatProgress(download: TorrentDownload) {
+  function formatProgress(download: TorrentDownloadRecord) {
     if (download.status === "processing" && download.processingProgress !== null) {
       return `Converting ${(download.processingProgress * 100).toFixed(1)}%`;
     }
@@ -521,7 +407,7 @@ export default function App() {
     return `${(download.progress * 100).toFixed(1)}%`;
   }
 
-  function renderFileActions(file: LibraryFile) {
+  function renderFileActions(file: LibraryFileRecord) {
     return (
       <div className="file-actions">
         <button

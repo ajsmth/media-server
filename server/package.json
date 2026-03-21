@@ -11,6 +11,7 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
+    "@media-server/shared": "1.0.0",
     "@u4/adbkit": "^5.1.7",
     "express": "^5.2.1",
     "video-name-parser": "^1.4.7",

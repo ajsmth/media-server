@@ -3,7 +3,8 @@
   "private": true,
   "workspaces": [
     "client",
-    "server"
+    "server",
+    "shared"
   ],
   "scripts": {
     "build": "yarn workspace media-server-backend build && yarn workspace media-server-client build",

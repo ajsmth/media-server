@@ -3,35 +3,10 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 
 import WebTorrent, { type Torrent } from "webtorrent";
+import type { TorrentDownloadRecord } from "@media-server/shared";
 
 import { BrowserMediaTranscoder } from "./browser-media-transcoder";
 import { MediaLibrary } from "./media-library";
-
-export type TorrentDownloadStatus =
-  | "starting"
-  | "downloading"
-  | "processing"
-  | "completed"
-  | "cancelled"
-  | "error";
-
-export type TorrentDownloadRecord = {
-  id: string;
-  magnetLink: string;
-  name: string | null;
-  infoHash: string | null;
-  status: TorrentDownloadStatus;
-  progress: number;
-  downloadedBytes: number;
-  totalBytes: number | null;
-  downloadSpeed: number;
-  processingProgress: number | null;
-  processingDetails: string | null;
-  browserCopyPath: string | null;
-  errorMessage: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
 
 type ManagedTorrent = {
   record: TorrentDownloadRecord;

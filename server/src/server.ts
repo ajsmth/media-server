@@ -1,62 +1,26 @@
 import express from "express";
 import path from "node:path";
+import type {
+  AdbStatus,
+  CreateTorrentRequestBody,
+  ErrorResponse,
+  LaunchVlcResponse,
+  LibraryCatalogSnapshot,
+  PlayRequestBody,
+  PlayResponse,
+  TorrentDownloadRecord,
+} from "@media-server/shared";
 
 import { config } from "./config";
 import { AndroidDeviceClient } from "./services/android-device-client";
 import { BrowserMediaTranscoder } from "./services/browser-media-transcoder";
-import {
-  LibraryCatalogService,
-  type LibraryCatalogSnapshot,
-} from "./services/library-catalog-service";
+import { LibraryCatalogService } from "./services/library-catalog-service";
 import { MediaLibrary } from "./services/media-library";
-import {
-  TorrentDownloadService,
-  type TorrentDownloadRecord,
-} from "./services/torrent-download-service";
+import { TorrentDownloadService } from "./services/torrent-download-service";
 import { VlcRemoteController } from "./services/vlc-remote-controller";
-
-type PlayRequestBody = {
-  fileId?: string;
-};
-
-type PlayResponse = {
-  status: "playing";
-  fileId: string;
-  launch: {
-    mediaUrl: string;
-    launch: {
-      command: string;
-      stdout: string;
-    };
-  };
-};
-
-type LaunchVlcResponse = {
-  status: "launched";
-  launch: {
-    command: string;
-    stdout: string;
-  };
-};
-
-type ErrorResponse = {
-  error: string;
-};
-
-type CreateTorrentRequestBody = {
-  magnetLink?: string;
-};
 
 type TorrentParams = {
   id: string;
-};
-
-type AdbStatusResponse = {
-  host: string;
-  port: number;
-  serial: string;
-  connected: boolean;
-  lastError: string | null;
 };
 
 type LibraryFileParams = {
@@ -159,7 +123,7 @@ app.get("/adb/status", async (_req, res, next) => {
 app.post(
   "/adb/connect",
   async (
-    _req: express.Request<Record<string, never>, AdbStatusResponse>,
+    _req: express.Request<Record<string, never>, AdbStatus>,
     res,
     next,
   ) => {

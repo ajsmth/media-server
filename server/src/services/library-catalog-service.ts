@@ -3,85 +3,18 @@ import { watch, type FSWatcher } from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import parseVideoName from "video-name-parser";
+import type {
+  LibraryCatalogSnapshot,
+  LibraryCatalogStatus,
+  LibraryOtherVideoRecord,
+  LibraryFileRecord,
+  ParsedMediaDetails,
+} from "@media-server/shared";
 
 import {
   MediaLibrary,
   type PlayableFileEntry,
 } from "./media-library";
-
-type ParsedMediaDetails = {
-  rawName: string;
-  title: string;
-  normalizedTitle: string;
-  type: "movie" | "episode" | "other";
-  year: number | null;
-  seasonNumber: number | null;
-  episodeNumbers: number[];
-  tags: string[];
-  confidence: "high" | "medium" | "low";
-};
-
-export type LibraryFileRecord = {
-  id: string;
-  relativePath: string;
-  basename: string;
-  sizeBytes: number;
-  modifiedAt: string;
-  sourceUrl: string;
-  browserUrl: string | null;
-  browserCopyReady: boolean;
-  parsed: ParsedMediaDetails;
-};
-
-export type LibraryMovieRecord = {
-  id: string;
-  title: string;
-  sortTitle: string;
-  year: number | null;
-  files: LibraryFileRecord[];
-};
-
-export type LibraryEpisodeRecord = {
-  id: string;
-  title: string;
-  seasonNumber: number;
-  episodeNumbers: number[];
-  files: LibraryFileRecord[];
-};
-
-export type LibrarySeasonRecord = {
-  id: string;
-  seasonNumber: number;
-  episodes: LibraryEpisodeRecord[];
-};
-
-export type LibraryShowRecord = {
-  id: string;
-  title: string;
-  sortTitle: string;
-  seasons: LibrarySeasonRecord[];
-};
-
-export type LibraryOtherVideoRecord = {
-  id: string;
-  title: string;
-  files: LibraryFileRecord[];
-};
-
-export type LibraryCatalogSnapshot = {
-  generatedAt: string;
-  lastScanAt: string | null;
-  movies: LibraryMovieRecord[];
-  shows: LibraryShowRecord[];
-  otherVideos: LibraryOtherVideoRecord[];
-};
-
-export type LibraryCatalogStatus = {
-  state: "idle" | "scanning" | "error";
-  lastScanAt: string | null;
-  lastError: string | null;
-  watchEnabled: boolean;
-};
 
 type LibraryCatalogServiceOptions = {
   mediaDir: string;
