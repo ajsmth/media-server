@@ -74,6 +74,15 @@ export const queryKeys = {
   torrents: ["torrents"] as const,
 };
 
+function jsonRequestInit(body: unknown): RequestInit {
+  return {
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  };
+}
+
 export const client = {
   getLibrary(): Promise<LibraryCatalogSnapshot> {
     return request("/library", undefined, "Unable to load the media library from the backend.");
@@ -98,10 +107,7 @@ export const client = {
       "/play",
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
+        ...jsonRequestInit(body),
       },
       "Failed to launch VLC",
     );
@@ -130,10 +136,7 @@ export const client = {
       "/torrents",
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
+        ...jsonRequestInit(body),
       },
       "Failed to start torrent download",
     );
