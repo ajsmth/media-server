@@ -18,6 +18,7 @@ import {
 } from "./media-library";
 
 type LibraryCatalogServiceOptions = {
+  browserCopyStatusProvider?: (relativePath: string) => BrowserCopyEncodingStatus | null;
   mediaDir: string;
   indexFilePath: string;
   watchForChanges?: boolean;
@@ -78,8 +79,6 @@ export class LibraryCatalogService {
   private scanPromise: Promise<LibraryCatalogSnapshot> | null = null;
   private watcher: FSWatcher | null = null;
   private pendingScanTimer: NodeJS.Timeout | null = null;
-  private browserCopyStatusProvider: ((relativePath: string) => BrowserCopyEncodingStatus | null) | null =
-    null;
 
   constructor(
     private readonly mediaLibrary: MediaLibrary,
@@ -101,12 +100,6 @@ export class LibraryCatalogService {
 
   getStatus(): LibraryCatalogStatus {
     return { ...this.status };
-  }
-
-  setBrowserCopyStatusProvider(
-    provider: (relativePath: string) => BrowserCopyEncodingStatus | null,
-  ): void {
-    this.browserCopyStatusProvider = provider;
   }
 
   async rescan(): Promise<LibraryCatalogSnapshot> {
@@ -180,7 +173,8 @@ export class LibraryCatalogService {
     snapshot: LibraryCatalogSnapshot,
   ): LibraryCatalogSnapshot {
     const applyStatus = (file: LibraryFileRecord): LibraryFileRecord => {
-      const liveStatus = this.browserCopyStatusProvider?.(file.relativePath) ?? null;
+      const liveStatus =
+        this.options.browserCopyStatusProvider?.(file.relativePath) ?? null;
 
       if (!liveStatus) {
         return file;
@@ -333,7 +327,7 @@ export class LibraryCatalogService {
     const fileId = hashId(`file:${entry.relativePath}`);
     const browserCopyReady = await this.mediaLibrary.hasBrowserMediaFor(entry.relativePath);
     const browserCopyEncodingStatus =
-      this.browserCopyStatusProvider?.(entry.relativePath) ?? null;
+      this.options.browserCopyStatusProvider?.(entry.relativePath) ?? null;
     const sourceUrl = `/api/library/files/${fileId}/source`;
     const browserUrl = browserCopyReady ? `/api/library/files/${fileId}/browser` : null;
     const browserCopyStatus: BrowserCopyStatus = browserCopyReady

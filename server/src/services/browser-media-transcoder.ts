@@ -178,6 +178,8 @@ export class BrowserMediaTranscoder {
               : [
                   "-c:v",
                   "libx264",
+                  "-pix_fmt",
+                  "yuv420p",
                   "-preset",
                   "veryfast",
                   "-crf",

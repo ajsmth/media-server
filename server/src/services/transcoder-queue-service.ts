@@ -2,20 +2,20 @@ import type { BrowserCopyStatus } from "@media-server/shared";
 
 import { BrowserMediaTranscoder } from "./browser-media-transcoder";
 
-type BrowserCopyEncodingStatus = {
+type TranscoderQueueStatus = {
   state: BrowserCopyStatus;
   progress: number | null;
   details: string | null;
 };
 
-type BrowserCopyJob = {
+type TranscoderQueueJob = {
   relativePath: string;
   sourcePath: string;
 };
 
-export class BrowserCopyJobService {
-  private readonly queue: BrowserCopyJob[] = [];
-  private readonly statuses = new Map<string, BrowserCopyEncodingStatus>();
+export class TranscoderQueueService {
+  private readonly queue: TranscoderQueueJob[] = [];
+  private readonly statuses = new Map<string, TranscoderQueueStatus>();
   private readonly progressLogBuckets = new Map<string, number>();
   private isProcessing = false;
 
@@ -24,15 +24,15 @@ export class BrowserCopyJobService {
     private readonly onLibraryChanged: () => Promise<void>,
   ) {}
 
-  enqueue(relativePath: string, sourcePath: string): BrowserCopyEncodingStatus {
+  enqueue(relativePath: string, sourcePath: string): TranscoderQueueStatus {
     const existingStatus = this.statuses.get(relativePath);
 
     if (existingStatus) {
-      console.log(`[browser-copy] already queued: ${relativePath}`);
+      console.log(`[transcoder-queue] already queued: ${relativePath}`);
       return existingStatus;
     }
 
-    const status: BrowserCopyEncodingStatus = {
+    const status: TranscoderQueueStatus = {
       state: "queued",
       progress: null,
       details: "Queued for browser encoding.",
@@ -41,13 +41,13 @@ export class BrowserCopyJobService {
     this.statuses.set(relativePath, status);
     this.queue.push({ relativePath, sourcePath });
     console.log(
-      `[browser-copy] queued ${relativePath} (${this.queue.length} waiting)`,
+      `[transcoder-queue] queued ${relativePath} (${this.queue.length} waiting)`,
     );
     this.processQueue();
     return status;
   }
 
-  getStatus(relativePath: string): BrowserCopyEncodingStatus | null {
+  getStatus(relativePath: string): TranscoderQueueStatus | null {
     return this.statuses.get(relativePath) ?? null;
   }
 
@@ -72,7 +72,7 @@ export class BrowserCopyJobService {
       status.progress = 0;
     }
     console.log(
-      `[browser-copy] started ${nextJob.relativePath} (${this.queue.length} remaining)`,
+      `[transcoder-queue] started ${nextJob.relativePath} (${this.queue.length} remaining)`,
     );
 
     void this.browserMediaTranscoder
@@ -95,7 +95,7 @@ export class BrowserCopyJobService {
           if (progressBucket > previousBucket) {
             this.progressLogBuckets.set(nextJob.relativePath, progressBucket);
             console.log(
-              `[browser-copy] ${nextJob.relativePath} ${Math.round(progress * 100)}%`,
+              `[transcoder-queue] ${nextJob.relativePath} ${Math.round(progress * 100)}%`,
             );
           }
         },
@@ -103,7 +103,7 @@ export class BrowserCopyJobService {
       .then(async () => {
         this.statuses.delete(nextJob.relativePath);
         this.progressLogBuckets.delete(nextJob.relativePath);
-        console.log(`[browser-copy] completed ${nextJob.relativePath}`);
+        console.log(`[transcoder-queue] completed ${nextJob.relativePath}`);
         await this.onLibraryChanged();
       })
       .catch((error) => {
@@ -116,7 +116,7 @@ export class BrowserCopyJobService {
             error instanceof Error ? error.message : "Encoding failed";
         }
         console.error(
-          `[browser-copy] failed ${nextJob.relativePath}: ${
+          `[transcoder-queue] failed ${nextJob.relativePath}: ${
             error instanceof Error ? error.message : "Encoding failed"
           }`,
         );
