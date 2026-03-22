@@ -3,6 +3,7 @@ import path from "node:path";
 import type {
   AdbStatus,
   CreateTorrentRequestBody,
+  EncodeLibraryFileResponse,
   ErrorResponse,
   LaunchVlcResponse,
   LibraryCatalogSnapshot,
@@ -14,6 +15,7 @@ import type {
 import { config } from "./config";
 import { AndroidDeviceClient } from "./services/android-device-client";
 import { BrowserMediaTranscoder } from "./services/browser-media-transcoder";
+import { BrowserCopyJobService } from "./services/browser-copy-job-service";
 import { LibraryCatalogService } from "./services/library-catalog-service";
 import { MediaLibrary } from "./services/media-library";
 import { TorrentDownloadService } from "./services/torrent-download-service";
@@ -34,11 +36,19 @@ const libraryCatalog = new LibraryCatalogService(mediaLibrary, {
   mediaDir: config.mediaDir,
   indexFilePath: config.libraryIndexFile,
 });
+const browserCopyJobService = new BrowserCopyJobService(
+  browserMediaTranscoder,
+  () => libraryCatalog.rescan().then(() => undefined),
+);
 const torrentDownloadService = new TorrentDownloadService(
   mediaLibrary,
   config.incompleteDownloadsDir,
   browserMediaTranscoder,
   () => libraryCatalog.rescan().then(() => undefined),
+);
+libraryCatalog.setBrowserCopyStatusProvider((relativePath) =>
+  browserCopyJobService.getStatus(relativePath) ??
+    torrentDownloadService.getBrowserCopyStatus(relativePath),
 );
 const androidDeviceClient = new AndroidDeviceClient({
   host: config.nebulaIp,
@@ -92,6 +102,45 @@ app.get("/api/library/files/:fileId/source", async (req, res, next) => {
     next(error);
   }
 });
+
+app.post(
+  "/api/library/files/:fileId/encode",
+  async (
+    req: express.Request<LibraryFileParams, EncodeLibraryFileResponse | ErrorResponse>,
+    res,
+    next,
+  ) => {
+    try {
+      const file = libraryCatalog.findFileById(req.params.fileId);
+
+      if (!file) {
+        res.status(404).json({ error: "File not found" });
+        return;
+      }
+
+      if (file.browserCopyReady) {
+        res.json({ status: "ready", fileId: file.id });
+        return;
+      }
+
+      const sourcePath = await libraryCatalog.resolveSourceFilePath(req.params.fileId);
+
+      if (!sourcePath) {
+        res.status(404).json({ error: "Source file not found" });
+        return;
+      }
+
+      browserCopyJobService.enqueue(file.relativePath, sourcePath);
+      void libraryCatalog.rescan().catch((error) => {
+        console.error("Failed to refresh library after queueing browser encode:", error);
+      });
+
+      res.status(202).json({ status: "queued", fileId: file.id });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 app.get(
   "/api/library/files/:fileId/browser",

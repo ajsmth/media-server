@@ -35,6 +35,11 @@ export type LaunchVlcResponse = {
   launch: VlcCommandResult;
 };
 
+export type EncodeLibraryFileResponse = {
+  status: "queued" | "ready";
+  fileId: string;
+};
+
 export type CreateTorrentRequestBody = {
   magnetLink?: string;
 };

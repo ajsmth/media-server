@@ -15,6 +15,8 @@ import {
   RefreshCw,
 } from "lucide-react";
 
+import { client } from "@/fetch-client";
+import { BrowserPlayer } from "@/components/library/browser-player";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -139,9 +141,36 @@ function formatParsedLabel(file: LibraryFileRecord) {
   return parsed.title;
 }
 
+function formatBrowserCopyStatus(file: LibraryFileRecord) {
+  if (file.browserCopyStatus === "queued") {
+    return "Queued";
+  }
+
+  if (
+    file.browserCopyStatus === "processing" &&
+    file.browserCopyProgress !== null
+  ) {
+    return `Encoding ${(file.browserCopyProgress * 100).toFixed(0)}%`;
+  }
+
+  if (file.browserCopyStatus === "processing") {
+    return "Encoding";
+  }
+
+  return null;
+}
+
 export function LibraryPage() {
   const { library, libraryQuery, libraryStatus, rescanLibraryMutation } =
     useLibrary();
+  const [encodeError, setEncodeError] = useState<string | null>(null);
+  const [selectedPlayback, setSelectedPlayback] = useState<{
+    fileId: string;
+    mode: "browser";
+  } | null>(null);
+  const [browserPlaybackError, setBrowserPlaybackError] = useState<string | null>(
+    null,
+  );
 
   const allFiles = useMemo(
     () =>
@@ -220,6 +249,50 @@ export function LibraryPage() {
     );
   }
 
+  async function handlePlayInBrowser(file: LibraryFileRecord) {
+    if (!file.browserUrl) {
+      setBrowserPlaybackError("Browser-ready copy is not available yet.");
+      setSelectedPlayback({ fileId: file.id, mode: "browser" });
+      return;
+    }
+
+    try {
+      await client.ensureBrowserReady(file.browserUrl);
+      setBrowserPlaybackError(null);
+      setSelectedPlayback({ fileId: file.id, mode: "browser" });
+    } catch (error) {
+      setBrowserPlaybackError(
+        error instanceof Error
+          ? error.message
+          : "Browser-ready copy is not available yet.",
+      );
+      setSelectedPlayback({ fileId: file.id, mode: "browser" });
+    }
+  }
+
+  async function handleEncodeFile(file: LibraryFileRecord) {
+    try {
+      setEncodeError(null);
+      await client.encodeLibraryFile(file.id);
+      await rescanLibraryMutation.mutateAsync();
+    } catch (error) {
+      setEncodeError(
+        error instanceof Error ? error.message : "Failed to queue browser encoding",
+      );
+    }
+  }
+
+  async function handlePrimaryFileAction(file: LibraryFileRecord) {
+    if (file.browserCopyStatus === "ready") {
+      await handlePlayInBrowser(file);
+      return;
+    }
+
+    if (file.browserCopyStatus === "unavailable") {
+      await handleEncodeFile(file);
+    }
+  }
+
   const libraryError = libraryQuery.isError
     ? libraryQuery.error instanceof Error
       ? libraryQuery.error.message
@@ -283,6 +356,11 @@ export function LibraryPage() {
           {libraryError}
         </p>
       ) : null}
+      {encodeError ? (
+        <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {encodeError}
+        </p>
+      ) : null}
 
       <section>
         <Card className="bg-white/60">
@@ -342,14 +420,57 @@ export function LibraryPage() {
                   node.files.length ? (
                     <div className="grid gap-2">
                       {node.files.map((file) => (
-                        <div
-                          className="rounded-[1rem] border border-border/70 bg-white/75 px-4 py-3"
-                          key={file.id}
-                          style={{ marginLeft: `${28 + node.depth * 16}px` }}
-                        >
-                          <p className="font-medium text-foreground">
-                            {formatParsedLabel(file)}
-                          </p>
+                        <div className="grid gap-2" key={file.id}>
+                          <div
+                            className="flex items-center justify-between gap-3 rounded-[1rem] border border-border/70 bg-white/75 px-4 py-3"
+                            style={{ marginLeft: `${28 + node.depth * 16}px` }}
+                          >
+                            <div className="flex min-w-0 items-center gap-3">
+                              <p className="min-w-0 truncate font-medium text-foreground">
+                                {formatParsedLabel(file)}
+                              </p>
+                              {formatBrowserCopyStatus(file) ? (
+                                <Badge variant="secondary">
+                                  {formatBrowserCopyStatus(file)}
+                                </Badge>
+                              ) : null}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                disabled={
+                                  file.browserCopyStatus === "queued" ||
+                                  file.browserCopyStatus === "processing"
+                                }
+                                onClick={() => void handlePrimaryFileAction(file)}
+                                size="sm"
+                                variant="outline"
+                              >
+                                {file.browserCopyStatus === "ready"
+                                  ? "Play"
+                                  : file.browserCopyStatus === "queued"
+                                    ? "Queued"
+                                  : file.browserCopyStatus === "processing"
+                                    ? "Encoding"
+                                    : "Encode"}
+                              </Button>
+                            </div>
+                          </div>
+
+                          {selectedPlayback?.fileId === file.id ? (
+                            <div style={{ marginLeft: `${28 + node.depth * 16}px` }}>
+                              <BrowserPlayer
+                                error={browserPlaybackError}
+                                file={file}
+                                modeLabel="Browser player"
+                                onVideoError={() =>
+                                  setBrowserPlaybackError(
+                                    "The browser-safe copy could not be played. It may still be transcoding.",
+                                  )
+                                }
+                                src={file.browserUrl ?? undefined}
+                              />
+                            </div>
+                          ) : null}
                         </div>
                       ))}
                     </div>

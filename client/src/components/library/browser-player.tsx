@@ -11,18 +11,22 @@ import {
 type BrowserPlayerProps = {
   file: LibraryFileRecord;
   error: string | null;
+  modeLabel?: string;
   onVideoError: () => void;
+  src?: string;
 };
 
 export function BrowserPlayer({
   file,
   error,
+  modeLabel = "Browser player",
   onVideoError,
+  src,
 }: BrowserPlayerProps) {
   return (
     <Card className="overflow-hidden bg-slate-950 text-white">
       <CardHeader className="border-b border-white/10">
-        <CardTitle className="text-white">Browser player</CardTitle>
+        <CardTitle className="text-white">{modeLabel}</CardTitle>
         <CardDescription className="text-white/65">
           {file.relativePath}
         </CardDescription>
@@ -39,7 +43,7 @@ export function BrowserPlayer({
           key={file.id}
           onError={onVideoError}
           preload="metadata"
-          src={file.browserUrl ?? undefined}
+          src={src ?? file.browserUrl ?? undefined}
         />
       </CardContent>
     </Card>

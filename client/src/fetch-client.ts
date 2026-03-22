@@ -1,6 +1,7 @@
 import type {
   AdbStatus,
   CreateTorrentRequestBody,
+  EncodeLibraryFileResponse,
   ErrorResponse,
   LaunchVlcResponse,
   LibraryCatalogSnapshot,
@@ -163,6 +164,14 @@ export const client = {
       browserUrl,
       { method: "HEAD" },
       "Browser-ready copy is not available yet.",
+    );
+  },
+
+  encodeLibraryFile(fileId: string): Promise<EncodeLibraryFileResponse> {
+    return request(
+      `/api/library/files/${fileId}/encode`,
+      { method: "POST" },
+      "Failed to queue browser encoding",
     );
   },
 };

@@ -1,4 +1,5 @@
 export type {
+  BrowserCopyStatus,
   LibraryCatalogSnapshot,
   LibraryCatalogStatus,
   LibraryEpisodeRecord,
@@ -14,6 +15,7 @@ export type {
 export type {
   AdbStatus,
   CreateTorrentRequestBody,
+  EncodeLibraryFileResponse,
   ErrorResponse,
   LaunchVlcResponse,
   LibraryResponse,

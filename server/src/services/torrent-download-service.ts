@@ -3,16 +3,23 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 
 import WebTorrent, { type Torrent } from "webtorrent";
-import type { TorrentDownloadRecord } from "@media-server/shared";
+import type { BrowserCopyStatus, TorrentDownloadRecord } from "@media-server/shared";
 
 import { BrowserMediaTranscoder } from "./browser-media-transcoder";
 import { MediaLibrary } from "./media-library";
 
 type ManagedTorrent = {
+  currentRelativeMediaPath: string | null;
   record: TorrentDownloadRecord;
   torrent: Torrent;
   sessionDir: string;
   progressLogger: NodeJS.Timeout;
+};
+
+type BrowserCopyEncodingStatus = {
+  state: BrowserCopyStatus;
+  progress: number | null;
+  details: string | null;
 };
 
 export class TorrentDownloadService {
@@ -70,7 +77,13 @@ export class TorrentDownloadService {
       console.log(this.formatProgressLog(record));
     }, 2000);
 
-    this.downloads.set(id, { record, torrent, sessionDir, progressLogger });
+    this.downloads.set(id, {
+      currentRelativeMediaPath: null,
+      record,
+      torrent,
+      sessionDir,
+      progressLogger,
+    });
     this.history.set(id, record);
 
     torrent.once("ready", () => {
@@ -92,6 +105,7 @@ export class TorrentDownloadService {
       clearInterval(progressLogger);
 
       try {
+        const managedTorrent = this.downloads.get(id);
         this.syncRecord(record, torrent);
         record.status = "processing";
         record.downloadSpeed = 0;
@@ -109,6 +123,9 @@ export class TorrentDownloadService {
 
         await Promise.all(
           movedFiles.map(async (relativeMediaPath) => {
+            if (managedTorrent) {
+              managedTorrent.currentRelativeMediaPath = relativeMediaPath;
+            }
             const sourcePath = await this.mediaLibrary.resolveExistingFile(relativeMediaPath);
 
             if (!sourcePath) {
@@ -128,6 +145,10 @@ export class TorrentDownloadService {
             );
           }),
         );
+
+        if (managedTorrent) {
+          managedTorrent.currentRelativeMediaPath = null;
+        }
 
         record.status = "completed";
         record.processingProgress = 1;
@@ -188,6 +209,23 @@ export class TorrentDownloadService {
     console.log(`Cancelled torrent ${record.name ?? record.id}`);
 
     return record;
+  }
+
+  getBrowserCopyStatus(relativePath: string): BrowserCopyEncodingStatus | null {
+    for (const managedTorrent of this.downloads.values()) {
+      if (
+        managedTorrent.record.status === "processing" &&
+        managedTorrent.currentRelativeMediaPath === relativePath
+      ) {
+        return {
+          state: "processing",
+          progress: managedTorrent.record.processingProgress,
+          details: managedTorrent.record.processingDetails,
+        };
+      }
+    }
+
+    return null;
   }
 
   private syncRecord(record: TorrentDownloadRecord, torrent: Torrent): void {

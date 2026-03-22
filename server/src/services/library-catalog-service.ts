@@ -4,6 +4,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import parseVideoName from "video-name-parser";
 import type {
+  BrowserCopyStatus,
   LibraryCatalogSnapshot,
   LibraryCatalogStatus,
   LibraryOtherVideoRecord,
@@ -51,6 +52,12 @@ type MutableShow = {
   seasons: Map<number, MutableSeason>;
 };
 
+type BrowserCopyEncodingStatus = {
+  state: BrowserCopyStatus;
+  progress: number | null;
+  details: string | null;
+};
+
 const EMPTY_SNAPSHOT: LibraryCatalogSnapshot = {
   generatedAt: new Date(0).toISOString(),
   lastScanAt: null,
@@ -71,6 +78,8 @@ export class LibraryCatalogService {
   private scanPromise: Promise<LibraryCatalogSnapshot> | null = null;
   private watcher: FSWatcher | null = null;
   private pendingScanTimer: NodeJS.Timeout | null = null;
+  private browserCopyStatusProvider: ((relativePath: string) => BrowserCopyEncodingStatus | null) | null =
+    null;
 
   constructor(
     private readonly mediaLibrary: MediaLibrary,
@@ -87,11 +96,17 @@ export class LibraryCatalogService {
   }
 
   getSnapshot(): LibraryCatalogSnapshot {
-    return this.snapshot;
+    return this.withLiveBrowserCopyStatus(this.snapshot);
   }
 
   getStatus(): LibraryCatalogStatus {
     return { ...this.status };
+  }
+
+  setBrowserCopyStatusProvider(
+    provider: (relativePath: string) => BrowserCopyEncodingStatus | null,
+  ): void {
+    this.browserCopyStatusProvider = provider;
   }
 
   async rescan(): Promise<LibraryCatalogSnapshot> {
@@ -159,6 +174,49 @@ export class LibraryCatalogService {
         console.warn("Unable to load library index:", error);
       }
     }
+  }
+
+  private withLiveBrowserCopyStatus(
+    snapshot: LibraryCatalogSnapshot,
+  ): LibraryCatalogSnapshot {
+    const applyStatus = (file: LibraryFileRecord): LibraryFileRecord => {
+      const liveStatus = this.browserCopyStatusProvider?.(file.relativePath) ?? null;
+
+      if (!liveStatus) {
+        return file;
+      }
+
+      return {
+        ...file,
+        browserCopyStatus: liveStatus.state,
+        browserCopyProgress: liveStatus.progress,
+        browserCopyDetails: liveStatus.details,
+        browserUrl: liveStatus.state === "ready" ? file.browserUrl : null,
+        browserCopyReady: liveStatus.state === "ready",
+      };
+    };
+
+    return {
+      ...snapshot,
+      movies: snapshot.movies.map((movie) => ({
+        ...movie,
+        files: movie.files.map(applyStatus),
+      })),
+      shows: snapshot.shows.map((show) => ({
+        ...show,
+        seasons: show.seasons.map((season) => ({
+          ...season,
+          episodes: season.episodes.map((episode) => ({
+            ...episode,
+            files: episode.files.map(applyStatus),
+          })),
+        })),
+      })),
+      otherVideos: snapshot.otherVideos.map((group) => ({
+        ...group,
+        files: group.files.map(applyStatus),
+      })),
+    };
   }
 
   private async performRescan(): Promise<LibraryCatalogSnapshot> {
@@ -274,8 +332,13 @@ export class LibraryCatalogService {
   ): Promise<LibraryFileRecord> {
     const fileId = hashId(`file:${entry.relativePath}`);
     const browserCopyReady = await this.mediaLibrary.hasBrowserMediaFor(entry.relativePath);
+    const browserCopyEncodingStatus =
+      this.browserCopyStatusProvider?.(entry.relativePath) ?? null;
     const sourceUrl = `/api/library/files/${fileId}/source`;
     const browserUrl = browserCopyReady ? `/api/library/files/${fileId}/browser` : null;
+    const browserCopyStatus: BrowserCopyStatus = browserCopyReady
+      ? "ready"
+      : browserCopyEncodingStatus?.state ?? "unavailable";
 
     return {
       id: fileId,
@@ -286,6 +349,9 @@ export class LibraryCatalogService {
       sourceUrl,
       browserUrl,
       browserCopyReady,
+      browserCopyStatus,
+      browserCopyProgress: browserCopyEncodingStatus?.progress ?? null,
+      browserCopyDetails: browserCopyEncodingStatus?.details ?? null,
       parsed,
     };
   }

@@ -2,6 +2,12 @@ export type ParsedMediaType = "movie" | "episode" | "other";
 
 export type ParsedMediaConfidence = "high" | "medium" | "low";
 
+export type BrowserCopyStatus =
+  | "ready"
+  | "queued"
+  | "processing"
+  | "unavailable";
+
 export type ParsedMediaDetails = {
   rawName: string;
   title: string;
@@ -23,6 +29,9 @@ export type LibraryFileRecord = {
   sourceUrl: string;
   browserUrl: string | null;
   browserCopyReady: boolean;
+  browserCopyStatus: BrowserCopyStatus;
+  browserCopyProgress: number | null;
+  browserCopyDetails: string | null;
   parsed: ParsedMediaDetails;
 };
 
