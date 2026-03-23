@@ -19,6 +19,7 @@ export const config = {
   mediaDir: path.join(projectRoot, "media"),
   libraryIndexDir: path.join(projectRoot, "media", ".index"),
   libraryIndexFile: path.join(projectRoot, "media", ".index", "library.json"),
+  playbackProgressFile: path.join(projectRoot, "media", ".index", "playback-progress.json"),
   incompleteDownloadsDir: path.join(projectRoot, "media", ".incomplete"),
   browserMediaDir: path.join(projectRoot, "media", "browser"),
   clientDistDir: path.join(projectRoot, "client", "dist"),

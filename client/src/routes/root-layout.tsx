@@ -1,6 +1,7 @@
 import { Outlet, useLocation } from "react-router";
 
 import { AppSidebar } from "@/components/app/app-sidebar";
+import { PlayerModal } from "@/components/library/player-modal";
 import { ProjectorStatusCard } from "@/components/app/projector-status-card";
 
 const pageMeta = {
@@ -54,6 +55,7 @@ export function RootLayout() {
           </main>
         </div>
       </div>
+      <PlayerModal />
     </div>
   );
 }

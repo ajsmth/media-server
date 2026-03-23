@@ -1,4 +1,9 @@
-import type { LibraryCatalogSnapshot, LibraryCatalogStatus } from "./library";
+import type {
+  LibraryCatalogSnapshot,
+  LibraryCatalogStatus,
+  PlaybackProgressRecord,
+  PlaybackSource,
+} from "./library";
 
 export type ErrorResponse = {
   error: string;
@@ -19,6 +24,7 @@ export type VlcCommandResult = {
 
 export type PlayRequestBody = {
   fileId?: string;
+  startSeconds?: number;
 };
 
 export type PlayResponse = {
@@ -34,6 +40,33 @@ export type LaunchVlcResponse = {
   status: "launched";
   launch: VlcCommandResult;
 };
+
+export type SavePlaybackProgressRequestBody = {
+  positionSeconds?: number;
+  durationSeconds?: number | null;
+  source?: PlaybackSource;
+};
+
+export type PlaybackHistoryItem = {
+  fileId: string;
+  title: string;
+  subtitle: string | null;
+  relativePath: string;
+  parsedType: "movie" | "episode" | "other";
+  progress: number;
+  positionSeconds: number;
+  durationSeconds: number | null;
+  updatedAt: string;
+  completedAt: string | null;
+  source: PlaybackSource;
+};
+
+export type PlaybackHistoryResponse = {
+  continueWatching: PlaybackHistoryItem[];
+  recentlyFinished: PlaybackHistoryItem[];
+};
+
+export type SavePlaybackProgressResponse = PlaybackProgressRecord;
 
 export type EncodeLibraryFileResponse = {
   status: "queued" | "ready";

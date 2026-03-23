@@ -16,9 +16,9 @@ import {
   RefreshCw,
   Upload,
 } from "lucide-react";
+import { useSearchParams } from "react-router";
 
 import { client } from "@/fetch-client";
-import { BrowserPlayer } from "@/components/library/browser-player";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -289,6 +289,39 @@ function formatFileProcessingStatus(file: LibraryFileRecord) {
   return null;
 }
 
+function getResumePositionSeconds(file: LibraryFileRecord) {
+  if (!file.playback || file.playback.completed || file.playback.positionSeconds <= 0) {
+    return null;
+  }
+
+  return file.playback.positionSeconds;
+}
+
+function getMostRecentResumableFile(files: LibraryFileRecord[]) {
+  return files
+    .filter((file) => getResumePositionSeconds(file) !== null)
+    .sort((left, right) =>
+      (right.playback?.updatedAt ?? "").localeCompare(left.playback?.updatedAt ?? ""),
+    )[0] ?? null;
+}
+
+function formatPlaybackTimestamp(seconds: number | null) {
+  if (seconds === null || seconds <= 0) {
+    return null;
+  }
+
+  const totalSeconds = Math.floor(seconds);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const remainingSeconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
+  }
+
+  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
+}
+
 type RowActionsMenuProps = {
   onDelete: () => void;
 };
@@ -329,17 +362,11 @@ function RowActionsMenu({
 export function LibraryPage() {
   const { library, libraryQuery, libraryStatus, rescanLibraryMutation } =
     useLibrary();
+  const [, setSearchParams] = useSearchParams();
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [libraryActionError, setLibraryActionError] = useState<string | null>(null);
   const [uploadingLabel, setUploadingLabel] = useState<string | null>(null);
-  const [selectedPlayback, setSelectedPlayback] = useState<{
-    fileId: string;
-    mode: "browser";
-  } | null>(null);
-  const [browserPlaybackError, setBrowserPlaybackError] = useState<string | null>(
-    null,
-  );
 
   const allFiles = useMemo(
     () =>
@@ -463,25 +490,19 @@ export function LibraryPage() {
     );
   }
 
-  async function handlePlayInBrowser(file: LibraryFileRecord) {
-    if (!file.browserUrl) {
-      setBrowserPlaybackError("Browser-ready copy is not available yet.");
-      setSelectedPlayback({ fileId: file.id, mode: "browser" });
-      return;
-    }
+  function openPlayer(fileId: string, resume: boolean) {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.set("play", fileId);
 
-    try {
-      await client.ensureBrowserReady(file.browserUrl);
-      setBrowserPlaybackError(null);
-      setSelectedPlayback({ fileId: file.id, mode: "browser" });
-    } catch (error) {
-      setBrowserPlaybackError(
-        error instanceof Error
-          ? error.message
-          : "Browser-ready copy is not available yet.",
-      );
-      setSelectedPlayback({ fileId: file.id, mode: "browser" });
-    }
+      if (resume) {
+        next.set("resume", "1");
+      } else {
+        next.delete("resume");
+      }
+
+      return next;
+    });
   }
 
   async function handleEncodeFile(file: LibraryFileRecord) {
@@ -533,11 +554,6 @@ export function LibraryPage() {
       setLibraryActionError(null);
       await client.deleteLibraryFile(file.id);
 
-      if (selectedPlayback?.fileId === file.id) {
-        setSelectedPlayback(null);
-        setBrowserPlaybackError(null);
-      }
-
       await rescanLibraryMutation.mutateAsync();
     } catch (error) {
       setLibraryActionError(
@@ -559,14 +575,6 @@ export function LibraryPage() {
       setLibraryActionError(null);
       await client.deleteLibraryFolder(node.relativeDirectoryPath);
 
-      if (
-        selectedPlayback &&
-        node.allFiles.some((file) => file.id === selectedPlayback.fileId)
-      ) {
-        setSelectedPlayback(null);
-        setBrowserPlaybackError(null);
-      }
-
       await rescanLibraryMutation.mutateAsync();
     } catch (error) {
       setLibraryActionError(
@@ -577,13 +585,33 @@ export function LibraryPage() {
 
   async function handlePrimaryFileAction(file: LibraryFileRecord) {
     if (file.fileProcessingStatus === "ready") {
-      await handlePlayInBrowser(file);
+      openPlayer(file.id, false);
       return;
     }
 
     if (file.fileProcessingStatus === "unavailable") {
       await handleEncodeFile(file);
     }
+  }
+
+  async function handleResumeFile(file: LibraryFileRecord) {
+    const resumePositionSeconds = getResumePositionSeconds(file);
+
+    if (resumePositionSeconds === null) {
+      return;
+    }
+
+    openPlayer(file.id, true);
+  }
+
+  async function handleResumeNode(node: ViewerNode) {
+    const resumableFile = getMostRecentResumableFile(node.allFiles);
+
+    if (!resumableFile) {
+      return;
+    }
+
+    await handleResumeFile(resumableFile);
   }
 
   const libraryError = libraryQuery.isError
@@ -598,7 +626,7 @@ export function LibraryPage() {
 
   return (
     <div className="grid gap-6">
-      <section className="flex flex-col gap-4 rounded-[1.5rem] border border-border/70 bg-white/60 p-4 backdrop-blur md:flex-row md:items-center md:justify-between">
+      <section className="flex flex-col gap-4 rounded-[1.5rem] border border-border/70 bg-white/60 p-4 backdrop-blur">
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="default">Library</Badge>
@@ -609,27 +637,30 @@ export function LibraryPage() {
           <h3 className="mt-3 text-2xl font-semibold tracking-tight text-foreground">
             Media viewer
           </h3>
-          <p className="mt-2 text-sm text-muted-foreground">
+          <p className="mt-2 hidden text-sm text-muted-foreground sm:block">
             Shows are grouped into virtual directories.
           </p>
         </div>
-        <Button
-          disabled={rescanLibraryMutation.status === "pending"}
-          onClick={() => void rescanLibraryMutation.mutateAsync()}
-          variant="outline"
-        >
-          {rescanLibraryMutation.status === "pending" ? (
-            <>
-              <LoaderCircle className="animate-spin" />
-              Rescanning
-            </>
-          ) : (
-            <>
-              <RefreshCw />
-              Rescan library
-            </>
-          )}
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Button
+            className="w-full sm:w-auto"
+            disabled={rescanLibraryMutation.status === "pending"}
+            onClick={() => void rescanLibraryMutation.mutateAsync()}
+            variant="outline"
+          >
+            {rescanLibraryMutation.status === "pending" ? (
+              <>
+                <LoaderCircle className="animate-spin" />
+                Rescanning
+              </>
+            ) : (
+              <>
+                <RefreshCw />
+                Rescan library
+              </>
+            )}
+          </Button>
+        </div>
       </section>
 
       {libraryStatus?.state === "scanning" ? (
@@ -662,12 +693,12 @@ export function LibraryPage() {
 
       <section>
         <Card className="bg-white/60">
-          <CardHeader>
+          <CardHeader className="space-y-3">
             <CardTitle>Folder viewer</CardTitle>
-            <CardDescription>
+            <CardDescription className="hidden sm:block">
               Grouped by shows, seasons, movies, and other videos.
             </CardDescription>
-            <div className="pt-2">
+            <div>
               <input
                 accept=".mkv,.mp4,video/*"
                 className="hidden"
@@ -677,6 +708,7 @@ export function LibraryPage() {
                 type="file"
               />
               <Button
+                className="w-full sm:w-auto"
                 disabled={uploadingLabel !== null}
                 onClick={() => uploadInputRef.current?.click()}
                 variant="outline"
@@ -685,7 +717,7 @@ export function LibraryPage() {
                 Add files
               </Button>
             </div>
-            <div className="pt-2">
+            <div>
               <input
                 className="w-full rounded-[1rem] border border-border/70 bg-white/80 px-4 py-3 text-sm text-foreground outline-none transition focus:border-primary/60"
                 onChange={(event) => setSearchQuery(event.target.value)}
@@ -695,7 +727,7 @@ export function LibraryPage() {
               />
             </div>
           </CardHeader>
-          <CardContent className="grid gap-1">
+          <CardContent className="grid auto-rows-min content-start min-h-[70vh] gap-1 sm:min-h-[48rem]">
             {searchQuery && visibleNodes.length === 0 ? (
               <p className="rounded-[1rem] border border-dashed border-border/80 px-4 py-6 text-sm text-muted-foreground">
                 No matching files.
@@ -709,11 +741,14 @@ export function LibraryPage() {
                   const isExpanded = effectiveExpandedNodeIdSet.has(node.id);
                   const showOpenFolder = isExpanded;
                   const canDeleteFolder = node.relativeDirectoryPath !== null;
+                  const canResumeNode =
+                    (node.id.startsWith("show:") || node.id.startsWith("movie:")) &&
+                    getMostRecentResumableFile(node.allFiles) !== null;
 
                   return (
                     <div
                       className={cn(
-                        "flex items-center gap-2 rounded-[1rem] px-1 py-1 text-sm transition-colors",
+                        "grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1 rounded-[1rem] px-1 py-1 text-sm transition-colors sm:gap-2",
                         isExpanded
                           ? "bg-primary/10 text-primary"
                           : "text-muted-foreground hover:bg-white/80 hover:text-foreground",
@@ -743,6 +778,16 @@ export function LibraryPage() {
                           <span className="truncate">{node.label}</span>
                         </span>
                       </button>
+                      {canResumeNode ? (
+                        <Button
+                          className="h-7 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-xs"
+                          onClick={() => void handleResumeNode(node)}
+                          size="sm"
+                          variant="outline"
+                        >
+                          Resume
+                        </Button>
+                      ) : null}
                       <span className="text-xs opacity-70">{node.allFiles.length}</span>
                       {canDeleteFolder ? (
                         <RowActionsMenu
@@ -758,22 +803,45 @@ export function LibraryPage() {
                     <div className="grid gap-2">
                       {(filteredFilesByNodeId.get(node.id) ?? []).map((file) => (
                         <div className="grid gap-2" key={file.id}>
+                          {(() => {
+                            const resumePositionSeconds = getResumePositionSeconds(file);
+
+                            return (
                           <div
-                            className="flex items-center justify-between gap-3 rounded-[1rem] border border-border/70 bg-white/75 px-4 py-3"
+                            className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-[1rem] border border-border/70 bg-white/75 px-3 py-3 sm:px-4"
                             style={{ marginLeft: `${28 + node.depth * 16}px` }}
                           >
-                            <div className="flex min-w-0 items-center gap-3">
-                              <p className="min-w-0 truncate font-medium text-foreground">
-                                {formatParsedLabel(file)}
-                              </p>
-                              {formatFileProcessingStatus(file) ? (
-                                <Badge variant="secondary">
-                                  {formatFileProcessingStatus(file)}
-                                </Badge>
+                            <div className="min-w-0">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <p className="min-w-0 truncate font-medium text-foreground">
+                                  {formatParsedLabel(file)}
+                                </p>
+                                {formatFileProcessingStatus(file) ? (
+                                  <Badge className="shrink-0" variant="secondary">
+                                    {formatFileProcessingStatus(file)}
+                                  </Badge>
+                                ) : null}
+                              </div>
+                              {resumePositionSeconds !== null ? (
+                                <p className="mt-1 truncate text-xs text-muted-foreground">
+                                  Resume at {formatPlaybackTimestamp(resumePositionSeconds)}
+                                </p>
                               ) : null}
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+                              {resumePositionSeconds !== null &&
+                              file.fileProcessingStatus === "ready" ? (
+                                <Button
+                                  className="h-7 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-xs"
+                                  onClick={() => void handleResumeFile(file)}
+                                  size="sm"
+                                  variant="secondary"
+                                >
+                                  Resume
+                                </Button>
+                              ) : null}
                               <Button
+                                className="h-7 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-xs"
                                 disabled={
                                   file.fileProcessingStatus === "queued" ||
                                   file.fileProcessingStatus === "processing"
@@ -795,22 +863,8 @@ export function LibraryPage() {
                               />
                             </div>
                           </div>
-
-                          {selectedPlayback?.fileId === file.id ? (
-                            <div style={{ marginLeft: `${28 + node.depth * 16}px` }}>
-                              <BrowserPlayer
-                                error={browserPlaybackError}
-                                file={file}
-                                modeLabel="Browser player"
-                                onVideoError={() =>
-                                  setBrowserPlaybackError(
-                                    "The browser-safe copy could not be played. It may still be transcoding.",
-                                  )
-                                }
-                                src={file.browserUrl ?? undefined}
-                              />
-                            </div>
-                          ) : null}
+                            );
+                          })()}
                         </div>
                       ))}
                     </div>

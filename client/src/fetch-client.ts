@@ -8,8 +8,12 @@ import type {
   LaunchVlcResponse,
   LibraryCatalogSnapshot,
   LibraryCatalogStatus,
+  PlaybackHistoryResponse,
+  PlaybackSource,
   PlayRequestBody,
   PlayResponse,
+  SavePlaybackProgressRequestBody,
+  SavePlaybackProgressResponse,
   TorrentDownloadRecord,
   UploadLibraryFileResponse,
 } from "@media-server/shared";
@@ -74,6 +78,7 @@ async function requestVoid(
 export const queryKeys = {
   library: ["library"] as const,
   libraryStatus: ["library-status"] as const,
+  playbackHistory: ["playback-history"] as const,
   adbStatus: ["adb-status"] as const,
   torrents: ["torrents"] as const,
 };
@@ -102,6 +107,10 @@ export const client = {
 
   getTorrents(): Promise<TorrentDownloadRecord[]> {
     return request("/api/torrents", undefined, "Unable to load torrent activity from the backend.");
+  },
+
+  getPlaybackHistory(): Promise<PlaybackHistoryResponse> {
+    return request("/api/playback/history", undefined, "Unable to load playback history.");
   },
 
   playFile(fileId: string): Promise<PlayResponse> {
@@ -211,6 +220,30 @@ export const client = {
         ...jsonRequestInit(body),
       },
       "Failed to delete folder from the library",
+    );
+  },
+
+  savePlaybackProgress(
+    fileId: string,
+    input: {
+      positionSeconds: number;
+      durationSeconds: number | null;
+      source?: PlaybackSource;
+    },
+  ): Promise<SavePlaybackProgressResponse> {
+    const body: SavePlaybackProgressRequestBody = {
+      positionSeconds: input.positionSeconds,
+      durationSeconds: input.durationSeconds,
+      source: input.source ?? "browser",
+    };
+
+    return request(
+      `/api/playback/files/${fileId}/progress`,
+      {
+        method: "POST",
+        ...jsonRequestInit(body),
+      },
+      "Failed to save playback progress",
     );
   },
 };

@@ -8,6 +8,18 @@ export type FileProcessingStatus =
   | "processing"
   | "unavailable";
 
+export type PlaybackSource = "browser" | "projector";
+
+export type PlaybackProgressRecord = {
+  positionSeconds: number;
+  durationSeconds: number | null;
+  progress: number;
+  completed: boolean;
+  updatedAt: string;
+  completedAt: string | null;
+  source: PlaybackSource;
+};
+
 export type ParsedMediaDetails = {
   rawName: string;
   title: string;
@@ -32,6 +44,7 @@ export type LibraryFileRecord = {
   fileProcessingStatus: FileProcessingStatus;
   fileProcessingProgress: number | null;
   fileProcessingDetails: string | null;
+  playback: PlaybackProgressRecord | null;
   parsed: ParsedMediaDetails;
 };
 

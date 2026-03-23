@@ -9,6 +9,7 @@ import type {
   LibraryCatalogStatus,
   LibraryOtherVideoRecord,
   LibraryFileRecord,
+  PlaybackProgressRecord,
   ParsedMediaDetails,
 } from "@media-server/shared";
 
@@ -25,6 +26,7 @@ type LibraryCatalogServiceOptions = {
   fileProcessingStatusProvider?: FileProcessingStatusProvider;
   mediaDir: string;
   indexFilePath: string;
+  playbackProgressProvider?: (relativePath: string) => PlaybackProgressRecord | null;
   watchForChanges?: boolean;
 };
 
@@ -173,9 +175,16 @@ export class LibraryCatalogService {
     const applyStatus = (file: LibraryFileRecord): LibraryFileRecord => {
       const liveStatus: FileProcessingStatusSnapshot | null =
         this.options.fileProcessingStatusProvider?.(file.relativePath) ?? null;
+      const playback =
+        this.options.playbackProgressProvider?.(file.relativePath) ?? file.playback;
 
       if (!liveStatus) {
-        return file;
+        return playback === file.playback
+          ? file
+          : {
+            ...file,
+            playback,
+          };
       }
 
       return {
@@ -183,6 +192,7 @@ export class LibraryCatalogService {
         fileProcessingStatus: liveStatus.state,
         fileProcessingProgress: liveStatus.progress,
         fileProcessingDetails: liveStatus.details,
+        playback,
         browserUrl: liveStatus.state === "ready" ? file.browserUrl : null,
         browserCopyReady: liveStatus.state === "ready",
       };
@@ -326,6 +336,7 @@ export class LibraryCatalogService {
     const browserCopyReady = await this.mediaLibrary.hasBrowserMediaFor(entry.relativePath);
     const fileProcessingStatusSnapshot =
       this.options.fileProcessingStatusProvider?.(entry.relativePath) ?? null;
+    const playback = this.options.playbackProgressProvider?.(entry.relativePath) ?? null;
     const sourceUrl = `/api/library/files/${fileId}/source`;
     const browserUrl = browserCopyReady ? `/api/library/files/${fileId}/browser` : null;
     const fileProcessingStatus: FileProcessingStatus = browserCopyReady
@@ -344,6 +355,7 @@ export class LibraryCatalogService {
       fileProcessingStatus,
       fileProcessingProgress: fileProcessingStatusSnapshot?.progress ?? null,
       fileProcessingDetails: fileProcessingStatusSnapshot?.details ?? null,
+      playback,
       parsed,
     };
   }

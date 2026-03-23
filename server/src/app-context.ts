@@ -4,6 +4,7 @@ import { BrowserMediaTranscoder } from "./services/browser-media-transcoder";
 import { createFileProcessingStatusProvider } from "./services/file-processing-status-provider";
 import { LibraryCatalogService } from "./services/library-catalog-service";
 import { MediaLibrary } from "./services/media-library";
+import { PlaybackProgressService } from "./services/playback-progress-service";
 import { TorrentDownloadService } from "./services/torrent-download-service";
 import { TranscoderQueueService } from "./services/transcoder-queue-service";
 import { VlcRemoteController } from "./services/vlc-remote-controller";
@@ -12,6 +13,7 @@ export type AppContext = {
   androidDeviceClient: AndroidDeviceClient;
   libraryCatalog: LibraryCatalogService;
   mediaLibrary: MediaLibrary;
+  playbackProgressService: PlaybackProgressService;
   torrentDownloadService: TorrentDownloadService;
   transcoderQueueService: TranscoderQueueService;
   vlcRemoteController: VlcRemoteController;
@@ -19,6 +21,9 @@ export type AppContext = {
 
 export async function createAppContext(config: AppConfig): Promise<AppContext> {
   const mediaLibrary = new MediaLibrary(config.mediaDir);
+  const playbackProgressService = new PlaybackProgressService(
+    config.playbackProgressFile,
+  );
   const browserMediaTranscoder = new BrowserMediaTranscoder(
     config.browserMediaDir,
   );
@@ -46,6 +51,8 @@ export async function createAppContext(config: AppConfig): Promise<AppContext> {
     fileProcessingStatusProvider,
     mediaDir: config.mediaDir,
     indexFilePath: config.libraryIndexFile,
+    playbackProgressProvider: (relativePath) =>
+      playbackProgressService.get(relativePath),
   });
 
   const androidDeviceClient = new AndroidDeviceClient({
@@ -59,12 +66,14 @@ export async function createAppContext(config: AppConfig): Promise<AppContext> {
     playbackActivityName: config.vlcPlaybackActivity,
   });
 
+  await playbackProgressService.initialize();
   await libraryCatalog.initialize();
 
   return {
     androidDeviceClient,
     libraryCatalog,
     mediaLibrary,
+    playbackProgressService,
     torrentDownloadService,
     transcoderQueueService,
     vlcRemoteController,
