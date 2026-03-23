@@ -4,7 +4,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import parseVideoName from "video-name-parser";
 import type {
-  BrowserCopyStatus,
+  FileProcessingStatus,
   LibraryCatalogSnapshot,
   LibraryCatalogStatus,
   LibraryOtherVideoRecord,
@@ -12,13 +12,17 @@ import type {
   ParsedMediaDetails,
 } from "@media-server/shared";
 
+import type {
+  FileProcessingStatusProvider,
+  FileProcessingStatusSnapshot,
+} from "./file-processing-status-provider";
 import {
   MediaLibrary,
   type PlayableFileEntry,
 } from "./media-library";
 
 type LibraryCatalogServiceOptions = {
-  browserCopyStatusProvider?: (relativePath: string) => BrowserCopyEncodingStatus | null;
+  fileProcessingStatusProvider?: FileProcessingStatusProvider;
   mediaDir: string;
   indexFilePath: string;
   watchForChanges?: boolean;
@@ -51,12 +55,6 @@ type MutableShow = {
   title: string;
   sortTitle: string;
   seasons: Map<number, MutableSeason>;
-};
-
-type BrowserCopyEncodingStatus = {
-  state: BrowserCopyStatus;
-  progress: number | null;
-  details: string | null;
 };
 
 const EMPTY_SNAPSHOT: LibraryCatalogSnapshot = {
@@ -95,7 +93,7 @@ export class LibraryCatalogService {
   }
 
   getSnapshot(): LibraryCatalogSnapshot {
-    return this.withLiveBrowserCopyStatus(this.snapshot);
+    return this.withLiveFileProcessingStatus(this.snapshot);
   }
 
   getStatus(): LibraryCatalogStatus {
@@ -169,12 +167,12 @@ export class LibraryCatalogService {
     }
   }
 
-  private withLiveBrowserCopyStatus(
+  private withLiveFileProcessingStatus(
     snapshot: LibraryCatalogSnapshot,
   ): LibraryCatalogSnapshot {
     const applyStatus = (file: LibraryFileRecord): LibraryFileRecord => {
-      const liveStatus =
-        this.options.browserCopyStatusProvider?.(file.relativePath) ?? null;
+      const liveStatus: FileProcessingStatusSnapshot | null =
+        this.options.fileProcessingStatusProvider?.(file.relativePath) ?? null;
 
       if (!liveStatus) {
         return file;
@@ -182,9 +180,9 @@ export class LibraryCatalogService {
 
       return {
         ...file,
-        browserCopyStatus: liveStatus.state,
-        browserCopyProgress: liveStatus.progress,
-        browserCopyDetails: liveStatus.details,
+        fileProcessingStatus: liveStatus.state,
+        fileProcessingProgress: liveStatus.progress,
+        fileProcessingDetails: liveStatus.details,
         browserUrl: liveStatus.state === "ready" ? file.browserUrl : null,
         browserCopyReady: liveStatus.state === "ready",
       };
@@ -326,13 +324,13 @@ export class LibraryCatalogService {
   ): Promise<LibraryFileRecord> {
     const fileId = hashId(`file:${entry.relativePath}`);
     const browserCopyReady = await this.mediaLibrary.hasBrowserMediaFor(entry.relativePath);
-    const browserCopyEncodingStatus =
-      this.options.browserCopyStatusProvider?.(entry.relativePath) ?? null;
+    const fileProcessingStatusSnapshot =
+      this.options.fileProcessingStatusProvider?.(entry.relativePath) ?? null;
     const sourceUrl = `/api/library/files/${fileId}/source`;
     const browserUrl = browserCopyReady ? `/api/library/files/${fileId}/browser` : null;
-    const browserCopyStatus: BrowserCopyStatus = browserCopyReady
+    const fileProcessingStatus: FileProcessingStatus = browserCopyReady
       ? "ready"
-      : browserCopyEncodingStatus?.state ?? "unavailable";
+      : fileProcessingStatusSnapshot?.state ?? "unavailable";
 
     return {
       id: fileId,
@@ -343,9 +341,9 @@ export class LibraryCatalogService {
       sourceUrl,
       browserUrl,
       browserCopyReady,
-      browserCopyStatus,
-      browserCopyProgress: browserCopyEncodingStatus?.progress ?? null,
-      browserCopyDetails: browserCopyEncodingStatus?.details ?? null,
+      fileProcessingStatus,
+      fileProcessingProgress: fileProcessingStatusSnapshot?.progress ?? null,
+      fileProcessingDetails: fileProcessingStatusSnapshot?.details ?? null,
       parsed,
     };
   }

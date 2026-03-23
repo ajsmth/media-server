@@ -31,3 +31,5 @@ export const config = {
   vlcAppActivity: "org.videolan.vlc.StartActivity",
   vlcPlaybackActivity: "org.videolan.vlc.gui.video.VideoPlayerActivity",
 };
+
+export type AppConfig = typeof config;

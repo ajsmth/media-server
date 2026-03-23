@@ -1,8 +1,15 @@
 import express from "express";
+import { createWriteStream } from "node:fs";
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import { pipeline } from "node:stream/promises";
 import type {
+  DeleteLibraryFolderRequestBody,
+  DeleteLibraryItemResponse,
   EncodeLibraryFileResponse,
   ErrorResponse,
   LibraryCatalogSnapshot,
+  UploadLibraryFileResponse,
 } from "@media-server/shared";
 
 import type { AppContext } from "../app-context";
@@ -33,6 +40,50 @@ export function createLibraryRouter(context: AppContext) {
         const snapshot = await context.libraryCatalog.rescan();
         res.json(snapshot);
       } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.post(
+    "/upload",
+    async (
+      req: express.Request<
+        Record<string, never>,
+        UploadLibraryFileResponse | ErrorResponse
+      >,
+      res,
+      next,
+    ) => {
+      try {
+        const fileNameHeader = req.headers["x-file-name"];
+        const fileName = Array.isArray(fileNameHeader)
+          ? fileNameHeader[0]
+          : fileNameHeader;
+
+        if (!fileName) {
+          res.status(400).json({ error: "x-file-name header is required" });
+          return;
+        }
+
+        const destination = context.mediaLibrary.resolveUploadDestination(fileName);
+        await fs.mkdir(path.dirname(destination.absolutePath), { recursive: true });
+        await pipeline(
+          req,
+          createWriteStream(destination.absolutePath, { flags: "wx" }),
+        );
+        await context.libraryCatalog.rescan();
+
+        res.status(201).json({
+          status: "uploaded",
+          relativePath: destination.relativePath,
+        });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+          res.status(409).json({ error: "File already exists in the library" });
+          return;
+        }
+
         next(error);
       }
     },
@@ -93,6 +144,58 @@ export function createLibraryRouter(context: AppContext) {
         });
 
         res.status(202).json({ status: "queued", fileId: file.id });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.delete(
+    "/files/:fileId",
+    async (
+      req: express.Request<LibraryFileParams, DeleteLibraryItemResponse | ErrorResponse>,
+      res,
+      next,
+    ) => {
+      try {
+        const file = context.libraryCatalog.findFileById(req.params.fileId);
+
+        if (!file) {
+          res.status(404).json({ error: "File not found" });
+          return;
+        }
+
+        await context.mediaLibrary.deleteFile(file.relativePath);
+        await context.libraryCatalog.rescan();
+        res.json({ status: "deleted", target: "file" });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.delete(
+    "/folders",
+    async (
+      req: express.Request<
+        Record<string, never>,
+        DeleteLibraryItemResponse | ErrorResponse,
+        DeleteLibraryFolderRequestBody
+      >,
+      res,
+      next,
+    ) => {
+      try {
+        const relativePath = req.body.relativePath?.trim();
+
+        if (!relativePath) {
+          res.status(400).json({ error: "relativePath is required" });
+          return;
+        }
+
+        await context.mediaLibrary.deleteDirectory(relativePath);
+        await context.libraryCatalog.rescan();
+        res.json({ status: "deleted", target: "folder" });
       } catch (error) {
         next(error);
       }

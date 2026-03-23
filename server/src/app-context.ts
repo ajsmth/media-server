@@ -1,6 +1,7 @@
-import { config } from "./config";
+import type { AppConfig } from "./config";
 import { AndroidDeviceClient } from "./services/android-device-client";
 import { BrowserMediaTranscoder } from "./services/browser-media-transcoder";
+import { createFileProcessingStatusProvider } from "./services/file-processing-status-provider";
 import { LibraryCatalogService } from "./services/library-catalog-service";
 import { MediaLibrary } from "./services/media-library";
 import { TorrentDownloadService } from "./services/torrent-download-service";
@@ -10,12 +11,13 @@ import { VlcRemoteController } from "./services/vlc-remote-controller";
 export type AppContext = {
   androidDeviceClient: AndroidDeviceClient;
   libraryCatalog: LibraryCatalogService;
+  mediaLibrary: MediaLibrary;
   torrentDownloadService: TorrentDownloadService;
   transcoderQueueService: TranscoderQueueService;
   vlcRemoteController: VlcRemoteController;
 };
 
-export async function createAppContext(): Promise<AppContext> {
+export async function createAppContext(config: AppConfig): Promise<AppContext> {
   const mediaLibrary = new MediaLibrary(config.mediaDir);
   const browserMediaTranscoder = new BrowserMediaTranscoder(
     config.browserMediaDir,
@@ -35,10 +37,13 @@ export async function createAppContext(): Promise<AppContext> {
     () => libraryCatalog.rescan().then(() => undefined),
   );
 
+  const fileProcessingStatusProvider = createFileProcessingStatusProvider({
+    torrentDownloadService,
+    transcoderQueueService,
+  });
+
   libraryCatalog = new LibraryCatalogService(mediaLibrary, {
-    browserCopyStatusProvider: (relativePath) =>
-      transcoderQueueService.getStatus(relativePath) ??
-      torrentDownloadService.getBrowserCopyStatus(relativePath),
+    fileProcessingStatusProvider,
     mediaDir: config.mediaDir,
     indexFilePath: config.libraryIndexFile,
   });
@@ -59,6 +64,7 @@ export async function createAppContext(): Promise<AppContext> {
   return {
     androidDeviceClient,
     libraryCatalog,
+    mediaLibrary,
     torrentDownloadService,
     transcoderQueueService,
     vlcRemoteController,

@@ -40,6 +40,20 @@ export type EncodeLibraryFileResponse = {
   fileId: string;
 };
 
+export type UploadLibraryFileResponse = {
+  status: "uploaded";
+  relativePath: string;
+};
+
+export type DeleteLibraryItemResponse = {
+  status: "deleted";
+  target: "file" | "folder";
+};
+
+export type DeleteLibraryFolderRequestBody = {
+  relativePath?: string;
+};
+
 export type CreateTorrentRequestBody = {
   magnetLink?: string;
 };

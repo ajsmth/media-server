@@ -1,6 +1,8 @@
 import type {
   AdbStatus,
   CreateTorrentRequestBody,
+  DeleteLibraryFolderRequestBody,
+  DeleteLibraryItemResponse,
   EncodeLibraryFileResponse,
   ErrorResponse,
   LaunchVlcResponse,
@@ -9,6 +11,7 @@ import type {
   PlayRequestBody,
   PlayResponse,
   TorrentDownloadRecord,
+  UploadLibraryFileResponse,
 } from "@media-server/shared";
 
 export class ApiError extends Error {
@@ -172,6 +175,42 @@ export const client = {
       `/api/library/files/${fileId}/encode`,
       { method: "POST" },
       "Failed to queue browser encoding",
+    );
+  },
+
+  uploadLibraryFile(file: File): Promise<UploadLibraryFileResponse> {
+    return request(
+      "/api/library/upload",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": file.type || "application/octet-stream",
+          "x-file-name": file.name,
+        },
+        body: file,
+      },
+      "Failed to upload file to the library",
+    );
+  },
+
+  deleteLibraryFile(fileId: string): Promise<DeleteLibraryItemResponse> {
+    return request(
+      `/api/library/files/${fileId}`,
+      { method: "DELETE" },
+      "Failed to delete file from the library",
+    );
+  },
+
+  deleteLibraryFolder(relativePath: string): Promise<DeleteLibraryItemResponse> {
+    const body: DeleteLibraryFolderRequestBody = { relativePath };
+
+    return request(
+      "/api/library/folders",
+      {
+        method: "DELETE",
+        ...jsonRequestInit(body),
+      },
+      "Failed to delete folder from the library",
     );
   },
 };

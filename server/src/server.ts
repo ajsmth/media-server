@@ -1,6 +1,5 @@
 import express from "express";
 import path from "node:path";
-import type { ErrorResponse } from "@media-server/shared";
 
 import { createAppContext } from "./app-context";
 import { config } from "./config";
@@ -35,7 +34,7 @@ app.use((
 });
 
 async function startServer(): Promise<void> {
-  const context = await createAppContext();
+  const context = await createAppContext(config);
 
   apiRouter.use("/library", createLibraryRouter(context));
   apiRouter.use("/adb", createAdbRouter(context));

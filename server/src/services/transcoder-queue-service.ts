@@ -1,12 +1,5 @@
-import type { BrowserCopyStatus } from "@media-server/shared";
-
+import type { FileProcessingStatusSnapshot } from "./file-processing-status-provider";
 import { BrowserMediaTranscoder } from "./browser-media-transcoder";
-
-type TranscoderQueueStatus = {
-  state: BrowserCopyStatus;
-  progress: number | null;
-  details: string | null;
-};
 
 type TranscoderQueueJob = {
   relativePath: string;
@@ -15,7 +8,7 @@ type TranscoderQueueJob = {
 
 export class TranscoderQueueService {
   private readonly queue: TranscoderQueueJob[] = [];
-  private readonly statuses = new Map<string, TranscoderQueueStatus>();
+  private readonly statuses = new Map<string, FileProcessingStatusSnapshot>();
   private readonly progressLogBuckets = new Map<string, number>();
   private isProcessing = false;
 
@@ -24,7 +17,7 @@ export class TranscoderQueueService {
     private readonly onLibraryChanged: () => Promise<void>,
   ) {}
 
-  enqueue(relativePath: string, sourcePath: string): TranscoderQueueStatus {
+  enqueue(relativePath: string, sourcePath: string): FileProcessingStatusSnapshot {
     const existingStatus = this.statuses.get(relativePath);
 
     if (existingStatus) {
@@ -32,7 +25,7 @@ export class TranscoderQueueService {
       return existingStatus;
     }
 
-    const status: TranscoderQueueStatus = {
+    const status: FileProcessingStatusSnapshot = {
       state: "queued",
       progress: null,
       details: "Queued for browser encoding.",
@@ -47,7 +40,7 @@ export class TranscoderQueueService {
     return status;
   }
 
-  getStatus(relativePath: string): TranscoderQueueStatus | null {
+  getStatus(relativePath: string): FileProcessingStatusSnapshot | null {
     return this.statuses.get(relativePath) ?? null;
   }
 

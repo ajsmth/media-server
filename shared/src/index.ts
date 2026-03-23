@@ -1,5 +1,5 @@
 export type {
-  BrowserCopyStatus,
+  FileProcessingStatus,
   LibraryCatalogSnapshot,
   LibraryCatalogStatus,
   LibraryEpisodeRecord,
@@ -15,6 +15,8 @@ export type {
 export type {
   AdbStatus,
   CreateTorrentRequestBody,
+  DeleteLibraryFolderRequestBody,
+  DeleteLibraryItemResponse,
   EncodeLibraryFileResponse,
   ErrorResponse,
   LaunchVlcResponse,
@@ -24,5 +26,6 @@ export type {
   PlayResponse,
   TorrentDownloadRecord,
   TorrentDownloadStatus,
+  UploadLibraryFileResponse,
   VlcCommandResult,
 } from "./api";

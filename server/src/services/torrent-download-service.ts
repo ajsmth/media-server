@@ -3,9 +3,10 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 
 import WebTorrent, { type Torrent } from "webtorrent";
-import type { BrowserCopyStatus, TorrentDownloadRecord } from "@media-server/shared";
+import type { TorrentDownloadRecord } from "@media-server/shared";
 
 import { BrowserMediaTranscoder } from "./browser-media-transcoder";
+import type { FileProcessingStatusSnapshot } from "./file-processing-status-provider";
 import { MediaLibrary } from "./media-library";
 
 type ManagedTorrent = {
@@ -14,12 +15,6 @@ type ManagedTorrent = {
   torrent: Torrent;
   sessionDir: string;
   progressLogger: NodeJS.Timeout;
-};
-
-type BrowserCopyEncodingStatus = {
-  state: BrowserCopyStatus;
-  progress: number | null;
-  details: string | null;
 };
 
 export class TorrentDownloadService {
@@ -211,7 +206,7 @@ export class TorrentDownloadService {
     return record;
   }
 
-  getBrowserCopyStatus(relativePath: string): BrowserCopyEncodingStatus | null {
+  getFileProcessingStatus(relativePath: string): FileProcessingStatusSnapshot | null {
     for (const managedTorrent of this.downloads.values()) {
       if (
         managedTorrent.record.status === "processing" &&
