@@ -149,13 +149,58 @@ export class MediaLibrary {
 
     for (const file of playableFiles) {
       const sourcePath = path.join(sourceDir, file.path);
-      const relativeMediaPath = file.path;
-      const destinationPath = path.join(this.mediaDir, relativeMediaPath);
+      const destination = this.resolveUploadDestination(file.name);
+      const relativeMediaPath = destination.relativePath;
+      const destinationPath = destination.absolutePath;
 
       await fs.mkdir(path.dirname(destinationPath), { recursive: true });
       await fs.rm(destinationPath, { force: true });
-      await fs.rename(sourcePath, destinationPath);
+      await this.moveFile(sourcePath, destinationPath);
       movedFiles.push(relativeMediaPath);
+    }
+
+    return movedFiles;
+  }
+
+  async organizeMisplacedFiles(): Promise<string[]> {
+    await this.ensureMediaDirectories();
+
+    const entries = await this.listPlayableFileEntries();
+    const movedFiles: string[] = [];
+
+    for (const entry of entries) {
+      const normalizedPath = entry.relativePath.split("\\").join("/");
+      const topLevelDirectory = normalizedPath.split("/")[0];
+
+      if (topLevelDirectory === "Movies" || topLevelDirectory === "Shows") {
+        continue;
+      }
+
+      const destination = this.resolveUploadDestination(entry.baseName);
+
+      if (destination.relativePath === normalizedPath) {
+        continue;
+      }
+
+      try {
+        await fs.mkdir(path.dirname(destination.absolutePath), { recursive: true });
+        await fs.rm(destination.absolutePath, { force: true });
+        await this.moveFile(entry.absolutePath, destination.absolutePath);
+        await this.moveBrowserCopy(normalizedPath, destination.relativePath);
+        await this.removeEmptyParentDirectories(path.dirname(entry.absolutePath));
+        movedFiles.push(destination.relativePath);
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+
+        if (code === "EPERM") {
+          console.warn(
+            `[library-organize] skipped "${normalizedPath}" because the filesystem denied the move. On macOS this is often an immutable file flag such as uchg.`,
+          );
+          continue;
+        }
+
+        throw error;
+      }
     }
 
     return movedFiles;
@@ -201,6 +246,46 @@ export class MediaLibrary {
     }
 
     return fileName;
+  }
+
+  private async moveBrowserCopy(
+    fromRelativePath: string,
+    toRelativePath: string,
+  ): Promise<void> {
+    const existingBrowserPath = path.join(
+      this.mediaDir,
+      this.browserMediaPathFor(fromRelativePath),
+    );
+    const nextBrowserPath = path.join(
+      this.mediaDir,
+      this.browserMediaPathFor(toRelativePath),
+    );
+
+    try {
+      await fs.access(existingBrowserPath);
+    } catch {
+      return;
+    }
+
+    await fs.mkdir(path.dirname(nextBrowserPath), { recursive: true });
+    await fs.rm(nextBrowserPath, { force: true });
+    await this.moveFile(existingBrowserPath, nextBrowserPath);
+    await this.removeEmptyParentDirectories(path.dirname(existingBrowserPath));
+  }
+
+  private async moveFile(sourcePath: string, destinationPath: string): Promise<void> {
+    try {
+      await fs.rename(sourcePath, destinationPath);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+
+      if (code !== "EXDEV" && code !== "EPERM") {
+        throw error;
+      }
+
+      await fs.copyFile(sourcePath, destinationPath);
+      await fs.unlink(sourcePath);
+    }
   }
 
   private async collectPlayableFiles(directory: string): Promise<PlayableFileEntry[]> {

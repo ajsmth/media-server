@@ -26,7 +26,15 @@ type LibraryCatalogServiceOptions = {
   fileProcessingStatusProvider?: FileProcessingStatusProvider;
   mediaDir: string;
   indexFilePath: string;
+  parseLogFilePath?: string;
   playbackProgressProvider?: (relativePath: string) => PlaybackProgressRecord | null;
+  showGroupingOverrideResolver?: (
+    title: string,
+  ) => { title: string; normalizedTitle: string };
+  titleOverrideResolver?: (
+    kind: "show" | "movie" | "other",
+    relativePaths: string[],
+  ) => string | null;
   watchForChanges?: boolean;
 };
 
@@ -226,6 +234,13 @@ export class LibraryCatalogService {
     const movies = new Map<string, MutableMovie>();
     const shows = new Map<string, MutableShow>();
     const otherVideos = new Map<string, LibraryOtherVideoRecord>();
+    const parseLogLines: string[] = [
+      JSON.stringify({
+        timestamp: new Date().toISOString(),
+        event: "scan-start",
+        fileCount: entries.length,
+      }),
+    ];
 
     for (const entry of entries) {
       const parsed = this.classifyEntry(entry.relativePath);
@@ -242,6 +257,18 @@ export class LibraryCatalogService {
         };
         existingMovie.files.push(file);
         movies.set(movieKey, existingMovie);
+        parseLogLines.push(
+          JSON.stringify({
+            event: "classify",
+            relativePath: entry.relativePath,
+            kind: "movie",
+            title: parsed.title,
+            normalizedTitle: parsed.normalizedTitle,
+            year: parsed.year,
+            groupKey: movieKey,
+            confidence: parsed.confidence,
+          }),
+        );
         continue;
       }
 
@@ -270,6 +297,19 @@ export class LibraryCatalogService {
         existingSeason.episodes.set(episodeKey, existingEpisode);
         existingShow.seasons.set(parsed.seasonNumber, existingSeason);
         shows.set(showKey, existingShow);
+        parseLogLines.push(
+          JSON.stringify({
+            event: "classify",
+            relativePath: entry.relativePath,
+            kind: "episode",
+            title: parsed.title,
+            normalizedTitle: parsed.normalizedTitle,
+            seasonNumber: parsed.seasonNumber,
+            episodeNumbers: parsed.episodeNumbers,
+            groupKey: showKey,
+            confidence: parsed.confidence,
+          }),
+        );
         continue;
       }
 
@@ -281,6 +321,17 @@ export class LibraryCatalogService {
       };
       existingOther.files.push(file);
       otherVideos.set(otherKey, existingOther);
+      parseLogLines.push(
+        JSON.stringify({
+          event: "classify",
+          relativePath: entry.relativePath,
+          kind: "other",
+          title: parsed.title,
+          normalizedTitle: parsed.normalizedTitle,
+          groupKey: otherKey,
+          confidence: parsed.confidence,
+        }),
+      );
     }
 
     const snapshot: LibraryCatalogSnapshot = {
@@ -289,14 +340,44 @@ export class LibraryCatalogService {
       movies: Array.from(movies.values())
         .map((movie) => ({
           ...movie,
+          title: this.resolveGroupTitle(
+            "movie",
+            movie.files.map((file) => file.relativePath),
+            movie.title,
+          ),
+          sortTitle: normalizeSortTitle(
+            this.resolveGroupTitle(
+              "movie",
+              movie.files.map((file) => file.relativePath),
+              movie.title,
+            ),
+          ),
           files: movie.files.sort(compareFiles),
         }))
         .sort((left, right) => left.sortTitle.localeCompare(right.sortTitle)),
       shows: Array.from(shows.values())
         .map((show) => ({
           id: show.id,
-          title: show.title,
-          sortTitle: show.sortTitle,
+          title: this.resolveGroupTitle(
+            "show",
+            Array.from(show.seasons.values()).flatMap((season) =>
+              Array.from(season.episodes.values()).flatMap((episode) =>
+                episode.files.map((file) => file.relativePath),
+              )
+            ),
+            show.title,
+          ),
+          sortTitle: normalizeSortTitle(
+            this.resolveGroupTitle(
+              "show",
+              Array.from(show.seasons.values()).flatMap((season) =>
+                Array.from(season.episodes.values()).flatMap((episode) =>
+                  episode.files.map((file) => file.relativePath),
+                )
+              ),
+              show.title,
+            ),
+          ),
           seasons: Array.from(show.seasons.values())
             .sort((left, right) => left.seasonNumber - right.seasonNumber)
             .map((season) => ({
@@ -314,6 +395,11 @@ export class LibraryCatalogService {
       otherVideos: Array.from(otherVideos.values())
         .map((group) => ({
           ...group,
+          title: this.resolveGroupTitle(
+            "other",
+            group.files.map((file) => file.relativePath),
+            group.title,
+          ),
           files: group.files.sort(compareFiles),
         }))
         .sort((left, right) => left.title.localeCompare(right.title)),
@@ -324,6 +410,7 @@ export class LibraryCatalogService {
       `${JSON.stringify(snapshot, null, 2)}\n`,
       "utf8",
     );
+    await this.writeParseLog(parseLogLines);
 
     return snapshot;
   }
@@ -374,13 +461,15 @@ export class LibraryCatalogService {
       Array.isArray(parsed.episode) &&
       parsed.episode.length > 0
     ) {
-      const showTitleSource = rootFolder && seasonNumberFromFolder !== null
-        ? rootFolder
-        : parsed.name ?? stem;
+      const folderShowTitle = rootFolder
+        ? stripTrailingSeasonLabel(rootFolder)
+        : null;
+      const showTitleSource = parsed.name?.trim() || folderShowTitle || stem;
+      const resolvedShow = this.resolveShowGrouping(showTitleSource);
       return {
         rawName: stem,
-        title: humanizeTitle(showTitleSource),
-        normalizedTitle: normalizeIdentity(showTitleSource),
+        title: resolvedShow.title,
+        normalizedTitle: resolvedShow.normalizedTitle,
         type: "episode",
         year: null,
         seasonNumber: parsed.season,
@@ -407,10 +496,12 @@ export class LibraryCatalogService {
     }
 
     if (rootFolder && seasonNumberFromFolder !== null) {
+      const showTitleSource = stripTrailingSeasonLabel(rootFolder);
+      const resolvedShow = this.resolveShowGrouping(showTitleSource);
       return {
         rawName: stem,
-        title: humanizeTitle(rootFolder),
-        normalizedTitle: normalizeIdentity(rootFolder),
+        title: resolvedShow.title,
+        normalizedTitle: resolvedShow.normalizedTitle,
         type: "episode",
         year: null,
         seasonNumber: seasonNumberFromFolder,
@@ -459,6 +550,38 @@ export class LibraryCatalogService {
       tags: parsed.tag ?? [],
       confidence: "low",
     };
+  }
+
+  private resolveShowGrouping(title: string): {
+    title: string;
+    normalizedTitle: string;
+  } {
+    const resolved = this.options.showGroupingOverrideResolver?.(title);
+
+    if (resolved) {
+      return resolved;
+    }
+
+    return {
+      title: humanizeTitle(title),
+      normalizedTitle: normalizeIdentity(title),
+    };
+  }
+
+  private resolveGroupTitle(
+    kind: "show" | "movie" | "other",
+    relativePaths: string[],
+    fallbackTitle: string,
+  ): string {
+    return this.options.titleOverrideResolver?.(kind, relativePaths) ?? fallbackTitle;
+  }
+
+  private async writeParseLog(lines: string[]): Promise<void> {
+    if (!this.options.parseLogFilePath) {
+      return;
+    }
+
+    await fs.writeFile(this.options.parseLogFilePath, `${lines.join("\n")}\n`, "utf8");
   }
 
   private rebuildFileIndex(snapshot: LibraryCatalogSnapshot): void {
@@ -569,6 +692,18 @@ function detectSeasonFolderNumber(segments: string[]): number | null {
   }
 
   return null;
+}
+
+function stripTrailingSeasonLabel(value: string): string {
+  const normalized = value
+    .replace(/[._]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return normalized
+    .replace(/\bseason\s*\d{1,2}\b$/i, "")
+    .replace(/\bs\d{1,2}\b$/i, "")
+    .trim() || normalized;
 }
 
 function namesLikelyMatch(left: string, right: string): boolean {

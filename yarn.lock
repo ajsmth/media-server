@@ -3027,6 +3027,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"dotenv@npm:^17.3.1":
+  version: 17.3.1
+  resolution: "dotenv@npm:17.3.1"
+  checksum: 10c0/c78e0c2d5a549c751e544cc60e2b95e7cb67e0c551f42e094d161c6b297aa44b630a3c2dcacf5569e529a6c2a6b84e2ab9be8d37b299d425df5a18b81ce4a35f
+  languageName: node
+  linkType: hard
+
 "dunder-proto@npm:^1.0.1":
   version: 1.0.1
   resolution: "dunder-proto@npm:1.0.1"
@@ -4577,6 +4584,7 @@ __metadata:
     "@types/express": "npm:^5.0.3"
     "@types/node": "npm:^24.6.0"
     "@u4/adbkit": "npm:^5.1.7"
+    dotenv: "npm:^17.3.1"
     eslint: "npm:^9.22.0"
     express: "npm:^5.2.1"
     globals: "npm:^16.0.0"

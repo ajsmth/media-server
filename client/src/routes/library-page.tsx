@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type {
   LibraryFileRecord,
   LibraryMovieRecord,
@@ -18,7 +19,7 @@ import {
 } from "lucide-react";
 import { useSearchParams } from "react-router";
 
-import { client } from "@/fetch-client";
+import { client, queryKeys } from "@/fetch-client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,6 +30,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -38,6 +47,7 @@ import { cn } from "@/lib/utils";
 
 type ViewerNode = {
   id: string;
+  kind: "group" | "show" | "season" | "movie" | "other";
   label: string;
   depth: number;
   files: LibraryFileRecord[];
@@ -91,6 +101,7 @@ function buildViewerNodes(
 
   nodes.push({
     id: "shows",
+    kind: "group",
     label: "Shows",
     depth: 0,
     files: [],
@@ -107,6 +118,7 @@ function buildViewerNodes(
 
     nodes.push({
       id: `show:${show.id}`,
+      kind: "show",
       label: show.title,
       depth: 1,
       files: [],
@@ -123,6 +135,7 @@ function buildViewerNodes(
 
   nodes.push({
     id: "movies",
+    kind: "group",
     label: "Movies",
     depth: 0,
     files: [],
@@ -135,6 +148,7 @@ function buildViewerNodes(
   for (const movie of movies) {
     nodes.push({
       id: `movie:${movie.id}`,
+      kind: "movie",
       label: movie.year ? `${movie.title} (${movie.year})` : movie.title,
       depth: 1,
       files: movie.files,
@@ -146,6 +160,7 @@ function buildViewerNodes(
 
   nodes.push({
     id: "other",
+    kind: "group",
     label: "Other",
     depth: 0,
     files: [],
@@ -158,6 +173,7 @@ function buildViewerNodes(
   for (const group of otherVideos) {
     nodes.push({
       id: `other:${group.id}`,
+      kind: "other",
       label: group.title,
       depth: 1,
       files: group.files,
@@ -179,6 +195,7 @@ function buildSeasonNode(
 
   return {
     id: `season:${show.id}:${season.id}`,
+    kind: "season",
     label: `Season ${String(season.seasonNumber).padStart(2, "0")}`,
     depth: 2,
     files,
@@ -323,11 +340,15 @@ function formatPlaybackTimestamp(seconds: number | null) {
 }
 
 type RowActionsMenuProps = {
-  onDelete: () => void;
+  onMerge?: (() => void) | null;
+  onDelete?: (() => void) | null;
+  onRegenerateTitle?: (() => void) | null;
 };
 
 function RowActionsMenu({
+  onMerge,
   onDelete,
+  onRegenerateTitle,
 }: RowActionsMenuProps) {
   return (
     <Popover>
@@ -346,13 +367,33 @@ function RowActionsMenu({
         onClick={(event) => event.stopPropagation()}
       >
         <div className="grid gap-1">
-          <button
-            className="w-full rounded-[0.8rem] px-3 py-2 text-left text-sm text-destructive transition-colors hover:bg-destructive/10"
-            onClick={onDelete}
-            type="button"
-          >
-            Delete
-          </button>
+          {onRegenerateTitle ? (
+            <button
+              className="w-full rounded-[0.8rem] px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-secondary/70"
+              onClick={onRegenerateTitle}
+              type="button"
+            >
+              Regenerate title
+            </button>
+          ) : null}
+          {onMerge ? (
+            <button
+              className="w-full rounded-[0.8rem] px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-secondary/70"
+              onClick={onMerge}
+              type="button"
+            >
+              Merge into...
+            </button>
+          ) : null}
+          {onDelete ? (
+            <button
+              className="w-full rounded-[0.8rem] px-3 py-2 text-left text-sm text-destructive transition-colors hover:bg-destructive/10"
+              onClick={onDelete}
+              type="button"
+            >
+              Delete
+            </button>
+          ) : null}
         </div>
       </PopoverContent>
     </Popover>
@@ -360,12 +401,18 @@ function RowActionsMenu({
 }
 
 export function LibraryPage() {
+  const queryClient = useQueryClient();
   const { library, libraryQuery, libraryStatus, rescanLibraryMutation } =
     useLibrary();
   const [, setSearchParams] = useSearchParams();
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [libraryActionError, setLibraryActionError] = useState<string | null>(null);
+  const [isSavingRegeneratedTitle, setIsSavingRegeneratedTitle] = useState(false);
+  const [isTitleDialogOpen, setIsTitleDialogOpen] = useState(false);
+  const [isTitleSuggestionLoading, setIsTitleSuggestionLoading] = useState(false);
+  const [regeneratedTitleInput, setRegeneratedTitleInput] = useState("");
+  const [titleDialogNode, setTitleDialogNode] = useState<ViewerNode | null>(null);
   const [uploadingLabel, setUploadingLabel] = useState<string | null>(null);
 
   const allFiles = useMemo(
@@ -583,12 +630,97 @@ export function LibraryPage() {
     }
   }
 
-  async function handlePrimaryFileAction(file: LibraryFileRecord) {
-    if (file.fileProcessingStatus === "ready") {
-      openPlayer(file.id, false);
+  async function handleMergeShow(node: ViewerNode) {
+    if (node.kind !== "show") {
       return;
     }
 
+    const targetTitle = window.prompt(
+      `Merge "${node.label}" into which show title?`,
+      node.label,
+    )?.trim();
+
+    if (!targetTitle || targetTitle === node.label) {
+      return;
+    }
+
+    try {
+      setLibraryActionError(null);
+      const snapshot = await client.mergeLibraryShows(node.label, targetTitle);
+      queryClient.setQueryData(queryKeys.library, snapshot);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.libraryStatus });
+    } catch (error) {
+      setLibraryActionError(
+        error instanceof Error ? error.message : "Failed to merge show grouping",
+      );
+    }
+  }
+
+  async function handleOpenRegenerateTitleDialog(node: ViewerNode) {
+    if (node.kind !== "show" && node.kind !== "movie" && node.kind !== "other") {
+      return;
+    }
+
+    try {
+      setLibraryActionError(null);
+      setIsTitleSuggestionLoading(true);
+      setTitleDialogNode(node);
+      setIsTitleDialogOpen(true);
+      setRegeneratedTitleInput(node.label);
+
+      const response = await client.regenerateLibraryTitle({
+        kind: node.kind,
+        currentTitle: node.label,
+        relativePaths: node.allFiles.map((file) => file.relativePath),
+      });
+
+      setRegeneratedTitleInput(response.suggestedTitle);
+    } catch (error) {
+      setIsTitleDialogOpen(false);
+      setTitleDialogNode(null);
+      setLibraryActionError(
+        error instanceof Error ? error.message : "Failed to regenerate title",
+      );
+    } finally {
+      setIsTitleSuggestionLoading(false);
+    }
+  }
+
+  async function handleSaveRegeneratedTitle() {
+    if (
+      !titleDialogNode ||
+      (
+        titleDialogNode.kind !== "show" &&
+        titleDialogNode.kind !== "movie" &&
+        titleDialogNode.kind !== "other"
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setLibraryActionError(null);
+      setIsSavingRegeneratedTitle(true);
+      const snapshot = await client.saveLibraryTitleOverride({
+        kind: titleDialogNode.kind,
+        title: regeneratedTitleInput,
+        relativePaths: titleDialogNode.allFiles.map((file) => file.relativePath),
+      });
+      queryClient.setQueryData(queryKeys.library, snapshot);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.libraryStatus });
+      setIsTitleDialogOpen(false);
+      setTitleDialogNode(null);
+      setRegeneratedTitleInput("");
+    } catch (error) {
+      setLibraryActionError(
+        error instanceof Error ? error.message : "Failed to save title override",
+      );
+    } finally {
+      setIsSavingRegeneratedTitle(false);
+    }
+  }
+
+  async function handlePrimaryFileAction(file: LibraryFileRecord) {
     if (file.fileProcessingStatus === "unavailable") {
       await handleEncodeFile(file);
     }
@@ -740,15 +872,19 @@ export function LibraryPage() {
                   const isExpandable = node.hasChildren || visibleFiles.length > 0;
                   const isExpanded = effectiveExpandedNodeIdSet.has(node.id);
                   const showOpenFolder = isExpanded;
-                  const canDeleteFolder = node.relativeDirectoryPath !== null;
-                  const canResumeNode =
-                    (node.id.startsWith("show:") || node.id.startsWith("movie:")) &&
-                    getMostRecentResumableFile(node.allFiles) !== null;
+                    const canDeleteFolder = node.relativeDirectoryPath !== null;
+                    const showRowActions = node.kind === "show";
+                    const canRegenerateTitle =
+                      node.kind === "show" || node.kind === "movie" || node.kind === "other";
+                    const showActionsMenu = canDeleteFolder || showRowActions || canRegenerateTitle;
+                    const canResumeNode =
+                      (node.id.startsWith("show:") || node.id.startsWith("movie:")) &&
+                      getMostRecentResumableFile(node.allFiles) !== null;
 
                   return (
                     <div
                       className={cn(
-                        "grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1 rounded-[1rem] px-1 py-1 text-sm transition-colors sm:gap-2",
+                        "flex items-center gap-1 rounded-[1rem] px-1 py-1 text-sm transition-colors sm:gap-2",
                         isExpanded
                           ? "bg-primary/10 text-primary"
                           : "text-muted-foreground hover:bg-white/80 hover:text-foreground",
@@ -789,9 +925,13 @@ export function LibraryPage() {
                         </Button>
                       ) : null}
                       <span className="text-xs opacity-70">{node.allFiles.length}</span>
-                      {canDeleteFolder ? (
+                      {showActionsMenu ? (
                         <RowActionsMenu
-                          onDelete={() => void handleDeleteFolder(node)}
+                          onRegenerateTitle={
+                            canRegenerateTitle ? () => void handleOpenRegenerateTitleDialog(node) : null
+                          }
+                          onMerge={node.kind === "show" ? () => void handleMergeShow(node) : null}
+                          onDelete={canDeleteFolder ? () => void handleDeleteFolder(node) : null}
                         />
                       ) : null}
                     </div>
@@ -800,18 +940,22 @@ export function LibraryPage() {
 
                 {effectiveExpandedNodeIdSet.has(node.id) ? (
                   (filteredFilesByNodeId.get(node.id) ?? []).length ? (
-                    <div className="grid gap-2">
+                    <div className="flex flex-col gap-2">
                       {(filteredFilesByNodeId.get(node.id) ?? []).map((file) => (
-                        <div className="grid gap-2" key={file.id}>
+                        <div className="flex flex-col gap-2" key={file.id}>
                           {(() => {
                             const resumePositionSeconds = getResumePositionSeconds(file);
 
                             return (
                           <div
-                            className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-[1rem] border border-border/70 bg-white/75 px-3 py-3 sm:px-4"
+                            className="flex flex-col gap-2 rounded-[1rem] border border-border/70 bg-white/75 px-3 py-3 sm:flex-row sm:items-center sm:gap-3 sm:px-4"
                             style={{ marginLeft: `${28 + node.depth * 16}px` }}
                           >
-                            <div className="min-w-0">
+                            <button
+                              className="min-w-0 flex-1 rounded-[0.9rem] px-1 py-1 text-left transition-colors hover:bg-white/80"
+                              onClick={() => openPlayer(file.id, resumePositionSeconds !== null)}
+                              type="button"
+                            >
                               <div className="flex min-w-0 items-center gap-2">
                                 <p className="min-w-0 truncate font-medium text-foreground">
                                   {formatParsedLabel(file)}
@@ -827,37 +971,26 @@ export function LibraryPage() {
                                   Resume at {formatPlaybackTimestamp(resumePositionSeconds)}
                                 </p>
                               ) : null}
-                            </div>
-                            <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-                              {resumePositionSeconds !== null &&
-                              file.fileProcessingStatus === "ready" ? (
+                            </button>
+                            <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
+                              {file.fileProcessingStatus !== "ready" ? (
                                 <Button
                                   className="h-7 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-xs"
-                                  onClick={() => void handleResumeFile(file)}
+                                  disabled={
+                                    file.fileProcessingStatus === "queued" ||
+                                    file.fileProcessingStatus === "processing"
+                                  }
+                                  onClick={() => void handlePrimaryFileAction(file)}
                                   size="sm"
-                                  variant="secondary"
+                                  variant="outline"
                                 >
-                                  Resume
+                                  {file.fileProcessingStatus === "queued"
+                                    ? "Queued"
+                                    : file.fileProcessingStatus === "processing"
+                                      ? "Encoding"
+                                      : "Encode"}
                                 </Button>
                               ) : null}
-                              <Button
-                                className="h-7 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-xs"
-                                disabled={
-                                  file.fileProcessingStatus === "queued" ||
-                                  file.fileProcessingStatus === "processing"
-                                }
-                                onClick={() => void handlePrimaryFileAction(file)}
-                                size="sm"
-                                variant="outline"
-                              >
-                                {file.fileProcessingStatus === "ready"
-                                  ? "Play"
-                                  : file.fileProcessingStatus === "queued"
-                                    ? "Queued"
-                                  : file.fileProcessingStatus === "processing"
-                                    ? "Encoding"
-                                    : "Encode"}
-                              </Button>
                               <RowActionsMenu
                                 onDelete={() => void handleDeleteFile(file)}
                               />
@@ -882,6 +1015,77 @@ export function LibraryPage() {
           </CardContent>
         </Card>
       </section>
+
+      <Dialog
+        onOpenChange={(open) => {
+          setIsTitleDialogOpen(open);
+
+          if (!open) {
+            setTitleDialogNode(null);
+            setRegeneratedTitleInput("");
+            setIsTitleSuggestionLoading(false);
+          }
+        }}
+        open={isTitleDialogOpen}
+      >
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle>Regenerate title</DialogTitle>
+            <DialogDescription>
+              Review the regenerated title, edit it if needed, then save it to the library index.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 pt-2">
+            {titleDialogNode ? (
+              <p className="text-sm text-muted-foreground">
+                Updating <span className="font-medium text-foreground">{titleDialogNode.label}</span>
+              </p>
+            ) : null}
+            <Input
+              disabled={isTitleSuggestionLoading || isSavingRegeneratedTitle}
+              onChange={(event) => setRegeneratedTitleInput(event.target.value)}
+              placeholder="Generated title"
+              value={regeneratedTitleInput}
+            />
+            <div className="flex justify-end gap-2">
+              <Button
+                onClick={() => {
+                  setIsTitleDialogOpen(false);
+                  setTitleDialogNode(null);
+                  setRegeneratedTitleInput("");
+                }}
+                type="button"
+                variant="outline"
+              >
+                Cancel
+              </Button>
+              <Button
+                disabled={
+                  isTitleSuggestionLoading ||
+                  isSavingRegeneratedTitle ||
+                  regeneratedTitleInput.trim().length === 0
+                }
+                onClick={() => void handleSaveRegeneratedTitle()}
+                type="button"
+              >
+                {isTitleSuggestionLoading ? (
+                  <>
+                    <LoaderCircle className="animate-spin" />
+                    Regenerating
+                  </>
+                ) : isSavingRegeneratedTitle ? (
+                  <>
+                    <LoaderCircle className="animate-spin" />
+                    Saving
+                  </>
+                ) : (
+                  "Save title"
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

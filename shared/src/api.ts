@@ -87,6 +87,27 @@ export type DeleteLibraryFolderRequestBody = {
   relativePath?: string;
 };
 
+export type MergeLibraryShowRequestBody = {
+  sourceTitle?: string;
+  targetTitle?: string;
+};
+
+export type RegenerateLibraryTitleRequestBody = {
+  kind?: "show" | "movie" | "other";
+  currentTitle?: string;
+  relativePaths?: string[];
+};
+
+export type SaveLibraryTitleOverrideRequestBody = {
+  kind?: "show" | "movie" | "other";
+  title?: string;
+  relativePaths?: string[];
+};
+
+export type RegenerateLibraryTitleResponse = {
+  suggestedTitle: string;
+};
+
 export type CreateTorrentRequestBody = {
   magnetLink?: string;
 };

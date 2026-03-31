@@ -8,6 +8,7 @@ import type { TorrentDownloadRecord } from "@media-server/shared";
 import { BrowserMediaTranscoder } from "./browser-media-transcoder";
 import type { FileProcessingStatusSnapshot } from "./file-processing-status-provider";
 import { MediaLibrary } from "./media-library";
+import { TitleExtractionService } from "./title-extraction-service";
 
 type ManagedTorrent = {
   currentRelativeMediaPath: string | null;
@@ -18,7 +19,10 @@ type ManagedTorrent = {
 };
 
 export class TorrentDownloadService {
-  private readonly client = new WebTorrent();
+  // NAT-PMP/UPnP port mapping can fail in local/dev environments and crash startup.
+  private readonly client = new WebTorrent(
+    { natPmp: false, natUpnp: false } as never,
+  );
   private readonly downloads = new Map<string, ManagedTorrent>();
   private readonly history = new Map<string, TorrentDownloadRecord>();
 
@@ -26,6 +30,7 @@ export class TorrentDownloadService {
     private readonly mediaLibrary: MediaLibrary,
     private readonly incompleteDir: string,
     private readonly browserMediaTranscoder: BrowserMediaTranscoder,
+    private readonly titleExtractionService: TitleExtractionService,
     private readonly onLibraryChanged: () => Promise<void>,
   ) {
     this.client.on("error", (error) => {
@@ -224,12 +229,30 @@ export class TorrentDownloadService {
   }
 
   private syncRecord(record: TorrentDownloadRecord, torrent: Torrent): void {
-    record.name = torrent.name || record.name;
+    const rawName = torrent.name?.trim();
+
+    if (rawName && record.name !== rawName) {
+      record.name = rawName;
+      void this.enrichTorrentName(record, rawName);
+    }
+
     record.infoHash = torrent.infoHash || record.infoHash;
     record.progress = torrent.progress || 0;
     record.downloadedBytes = torrent.downloaded || 0;
     record.totalBytes = torrent.length || record.totalBytes;
     record.downloadSpeed = torrent.downloadSpeed || 0;
+  }
+
+  private async enrichTorrentName(
+    record: TorrentDownloadRecord,
+    rawName: string,
+  ): Promise<void> {
+    const extractedTitle = await this.titleExtractionService.extractTitle(rawName);
+
+    if (record.name === rawName) {
+      record.name = extractedTitle;
+      record.updatedAt = new Date().toISOString();
+    }
   }
 
   private markAsError(record: TorrentDownloadRecord, message: string): void {

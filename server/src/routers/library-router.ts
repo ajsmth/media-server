@@ -9,6 +9,10 @@ import type {
   EncodeLibraryFileResponse,
   ErrorResponse,
   LibraryCatalogSnapshot,
+  MergeLibraryShowRequestBody,
+  RegenerateLibraryTitleRequestBody,
+  RegenerateLibraryTitleResponse,
+  SaveLibraryTitleOverrideRequestBody,
   UploadLibraryFileResponse,
 } from "@media-server/shared";
 
@@ -37,6 +41,7 @@ export function createLibraryRouter(context: AppContext) {
       next,
     ) => {
       try {
+        await context.mediaLibrary.organizeMisplacedFiles();
         const snapshot = await context.libraryCatalog.rescan();
         res.json(snapshot);
       } catch (error) {
@@ -168,6 +173,113 @@ export function createLibraryRouter(context: AppContext) {
         await context.mediaLibrary.deleteFile(file.relativePath);
         await context.libraryCatalog.rescan();
         res.json({ status: "deleted", target: "file" });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.post(
+    "/show-merges",
+    async (
+      req: express.Request<
+        Record<string, never>,
+        LibraryCatalogSnapshot | ErrorResponse,
+        MergeLibraryShowRequestBody
+      >,
+      res,
+      next,
+    ) => {
+      try {
+        const sourceTitle = req.body.sourceTitle?.trim();
+        const targetTitle = req.body.targetTitle?.trim();
+
+        if (!sourceTitle || !targetTitle) {
+          res.status(400).json({ error: "sourceTitle and targetTitle are required" });
+          return;
+        }
+
+        await context.showGroupingOverrideService.merge(sourceTitle, targetTitle);
+        const snapshot = await context.libraryCatalog.rescan();
+        res.json(snapshot);
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.post(
+    "/titles/regenerate",
+    async (
+      req: express.Request<
+        Record<string, never>,
+        RegenerateLibraryTitleResponse | ErrorResponse,
+        RegenerateLibraryTitleRequestBody
+      >,
+      res,
+      next,
+    ) => {
+      try {
+        const kind = req.body.kind;
+        const currentTitle = req.body.currentTitle?.trim() ?? "";
+        const relativePaths = req.body.relativePaths ?? [];
+
+        if (!kind || !["show", "movie", "other"].includes(kind)) {
+          res.status(400).json({ error: "A valid kind is required" });
+          return;
+        }
+
+        if (relativePaths.length === 0) {
+          res.status(400).json({ error: "relativePaths are required" });
+          return;
+        }
+
+        const firstPath = relativePaths[0].split("\\").join("/");
+        const fileName = path.parse(path.basename(firstPath)).name;
+        const sourceText = fileName || currentTitle;
+        const suggestedTitle = await context.titleExtractionService.extractTitle(sourceText);
+
+        res.json({ suggestedTitle });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.post(
+    "/titles/save",
+    async (
+      req: express.Request<
+        Record<string, never>,
+        LibraryCatalogSnapshot | ErrorResponse,
+        SaveLibraryTitleOverrideRequestBody
+      >,
+      res,
+      next,
+    ) => {
+      try {
+        const kind = req.body.kind;
+        const title = req.body.title?.trim();
+        const relativePaths = req.body.relativePaths ?? [];
+
+        if (!kind || !["show", "movie", "other"].includes(kind)) {
+          res.status(400).json({ error: "A valid kind is required" });
+          return;
+        }
+
+        if (!title) {
+          res.status(400).json({ error: "title is required" });
+          return;
+        }
+
+        if (relativePaths.length === 0) {
+          res.status(400).json({ error: "relativePaths are required" });
+          return;
+        }
+
+        await context.mediaTitleOverrideService.save(kind, relativePaths, title);
+        const snapshot = await context.libraryCatalog.rescan();
+        res.json(snapshot);
       } catch (error) {
         next(error);
       }

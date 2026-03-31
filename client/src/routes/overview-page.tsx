@@ -195,7 +195,7 @@ export function OverviewPage() {
           <div className="mt-3 grid gap-2">
             {playbackHistory.continueWatching.map((item) => (
               <button
-                className="flex min-w-0 items-center gap-3 rounded-[1.1rem] border border-border/70 bg-white/75 px-4 py-3 text-left transition-colors hover:bg-white"
+                className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-[1.1rem] border border-border/70 bg-white/75 px-4 py-3 text-left transition-colors hover:bg-white"
                 key={item.fileId}
                 onClick={() => openPlayer(item.fileId, true)}
                 type="button"
@@ -238,7 +238,7 @@ export function OverviewPage() {
           <div className="mt-3 grid gap-2">
             {playbackHistory.recentlyFinished.map((item) => (
               <button
-                className="flex min-w-0 items-center gap-3 rounded-[1.1rem] border border-border/70 bg-white/75 px-4 py-3 text-left transition-colors hover:bg-white"
+                className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-[1.1rem] border border-border/70 bg-white/75 px-4 py-3 text-left transition-colors hover:bg-white"
                 key={item.fileId}
                 onClick={() => openPlayer(item.fileId, false)}
                 type="button"

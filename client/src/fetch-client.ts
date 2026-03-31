@@ -8,12 +8,16 @@ import type {
   LaunchVlcResponse,
   LibraryCatalogSnapshot,
   LibraryCatalogStatus,
+  MergeLibraryShowRequestBody,
+  RegenerateLibraryTitleRequestBody,
+  RegenerateLibraryTitleResponse,
   PlaybackHistoryResponse,
   PlaybackSource,
   PlayRequestBody,
   PlayResponse,
   SavePlaybackProgressRequestBody,
   SavePlaybackProgressResponse,
+  SaveLibraryTitleOverrideRequestBody,
   TorrentDownloadRecord,
   UploadLibraryFileResponse,
 } from "@media-server/shared";
@@ -220,6 +224,60 @@ export const client = {
         ...jsonRequestInit(body),
       },
       "Failed to delete folder from the library",
+    );
+  },
+
+  mergeLibraryShows(
+    sourceTitle: string,
+    targetTitle: string,
+  ): Promise<LibraryCatalogSnapshot> {
+    const body: MergeLibraryShowRequestBody = { sourceTitle, targetTitle };
+
+    return request(
+      "/api/library/show-merges",
+      {
+        method: "POST",
+        ...jsonRequestInit(body),
+      },
+      "Failed to merge show grouping",
+    );
+  },
+
+  regenerateLibraryTitle(
+    input: {
+      kind: "show" | "movie" | "other";
+      currentTitle: string;
+      relativePaths: string[];
+    },
+  ): Promise<RegenerateLibraryTitleResponse> {
+    const body: RegenerateLibraryTitleRequestBody = input;
+
+    return request(
+      "/api/library/titles/regenerate",
+      {
+        method: "POST",
+        ...jsonRequestInit(body),
+      },
+      "Failed to regenerate title",
+    );
+  },
+
+  saveLibraryTitleOverride(
+    input: {
+      kind: "show" | "movie" | "other";
+      title: string;
+      relativePaths: string[];
+    },
+  ): Promise<LibraryCatalogSnapshot> {
+    const body: SaveLibraryTitleOverrideRequestBody = input;
+
+    return request(
+      "/api/library/titles/save",
+      {
+        method: "POST",
+        ...jsonRequestInit(body),
+      },
+      "Failed to save title override",
     );
   },
 

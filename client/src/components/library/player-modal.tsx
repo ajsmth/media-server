@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
+import { LoaderCircle } from "lucide-react";
 
 import { client } from "@/fetch-client";
 import { BrowserPlayer } from "@/components/library/browser-player";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -11,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useLibrary } from "@/hooks/use-library";
+import { useProjector } from "@/hooks/use-projector";
 
 function formatPlayerTitle(input: {
   parsed: {
@@ -66,7 +69,13 @@ function formatPlaybackTime(positionSeconds: number, durationSeconds: number | n
 export function PlayerModal() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { library } = useLibrary();
+  const { adbStatus } = useProjector();
+  const [activeSessionKey, setActiveSessionKey] = useState<string | null>(null);
   const [playerError, setPlayerError] = useState<string | null>(null);
+  const [isLaunchingNebula, setIsLaunchingNebula] = useState(false);
+  const [isOverlayVisible, setIsOverlayVisible] = useState(true);
+  const [playbackSelection, setPlaybackSelection] = useState<"start" | "resume">("start");
+  const [sessionInitialPositionSeconds, setSessionInitialPositionSeconds] = useState(0);
 
   const allFiles = useMemo(
     () => [
@@ -84,9 +93,30 @@ export function PlayerModal() {
   const modalFileId = searchParams.get("play");
   const shouldResume = searchParams.get("resume") === "1";
   const modalFile = allFiles.find((file) => file.id === modalFileId) ?? null;
-  const initialPositionSeconds = shouldResume && modalFile?.playback && !modalFile.playback.completed
-    ? modalFile.playback.positionSeconds
-    : 0;
+  const sessionKey = modalFileId ? `${modalFileId}:${shouldResume ? "resume" : "start"}` : null;
+
+  useEffect(() => {
+    if (!sessionKey) {
+      setActiveSessionKey(null);
+      setIsOverlayVisible(true);
+      setPlaybackSelection("start");
+      setSessionInitialPositionSeconds(0);
+      return;
+    }
+
+    if (activeSessionKey === sessionKey || !modalFile) {
+      return;
+    }
+
+    setActiveSessionKey(sessionKey);
+    setIsOverlayVisible(true);
+    setPlaybackSelection(shouldResume ? "resume" : "start");
+    setSessionInitialPositionSeconds(
+      shouldResume && modalFile.playback && !modalFile.playback.completed
+        ? modalFile.playback.positionSeconds
+        : 0,
+    );
+  }, [activeSessionKey, modalFile, sessionKey, shouldResume]);
 
   useEffect(() => {
     if (!modalFile) {
@@ -122,6 +152,35 @@ export function PlayerModal() {
     };
   }, [modalFile]);
 
+  const resumePositionSeconds =
+    modalFile && modalFile.playback && !modalFile.playback.completed
+      ? modalFile.playback.positionSeconds
+      : 0;
+  const canResume = resumePositionSeconds > 0;
+
+  async function handleLaunchNebula() {
+    if (!modalFile) {
+      return;
+    }
+
+    try {
+      setPlayerError(null);
+      setIsLaunchingNebula(true);
+      await client.playFile(modalFile.id);
+      closePlayer();
+    } catch (error) {
+      setPlayerError(error instanceof Error ? error.message : "Failed to launch on Nebula.");
+    } finally {
+      setIsLaunchingNebula(false);
+    }
+  }
+
+  function handleSelectPlayback(mode: "start" | "resume") {
+    setPlaybackSelection(mode);
+    setSessionInitialPositionSeconds(mode === "resume" ? resumePositionSeconds : 0);
+    setIsOverlayVisible(false);
+  }
+
   function closePlayer() {
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
@@ -146,8 +205,8 @@ export function PlayerModal() {
             <DialogTitle>{modalFile ? formatPlayerTitle(modalFile) : "Player"}</DialogTitle>
             <DialogDescription>
               {modalFile
-                ? shouldResume && initialPositionSeconds > 0
-                  ? `Resuming at ${formatPlaybackTime(initialPositionSeconds, modalFile.playback?.durationSeconds ?? null)}`
+                ? playbackSelection === "resume" && sessionInitialPositionSeconds > 0
+                  ? `Resuming at ${formatPlaybackTime(sessionInitialPositionSeconds, modalFile.playback?.durationSeconds ?? null)}`
                   : "Browser playback"
                 : "Browser playback"}
             </DialogDescription>
@@ -156,15 +215,55 @@ export function PlayerModal() {
         <div className="p-4 sm:p-5">
           {modalFile ? (
             <BrowserPlayer
+              autoPlay={!isOverlayVisible}
               error={playerError}
               file={modalFile}
-              initialPositionSeconds={initialPositionSeconds}
-              modeLabel={shouldResume ? "Resume playback" : "Browser player"}
+              initialPositionSeconds={sessionInitialPositionSeconds}
+              modeLabel={playbackSelection === "resume" ? "Resume playback" : "Browser player"}
               onVideoError={() =>
                 setPlayerError(
                   "The browser-safe copy could not be played. It may still be transcoding.",
                 )
               }
+              overlay={modalFile.browserUrl && isOverlayVisible ? (
+                <div className="absolute inset-0 flex items-center justify-center rounded-[1.5rem] bg-black/55 p-4">
+                  <div className="flex flex-wrap items-center justify-center gap-2 rounded-[1rem] border border-white/10 bg-black/70 p-3 backdrop-blur">
+                    <Button
+                      onClick={() => handleSelectPlayback("start")}
+                      type="button"
+                      variant="secondary"
+                    >
+                      Play
+                    </Button>
+                    {canResume ? (
+                      <Button
+                        onClick={() => handleSelectPlayback("resume")}
+                        type="button"
+                        variant="default"
+                      >
+                        Resume
+                      </Button>
+                    ) : null}
+                    {adbStatus?.connected ? (
+                      <Button
+                        disabled={isLaunchingNebula}
+                        onClick={() => void handleLaunchNebula()}
+                        type="button"
+                        variant="outline"
+                      >
+                        {isLaunchingNebula ? (
+                          <>
+                            <LoaderCircle className="animate-spin" />
+                            Launching
+                          </>
+                        ) : (
+                          "Nebula play"
+                        )}
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
               src={modalFile.browserUrl ?? undefined}
             />
           ) : (

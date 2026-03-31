@@ -11,20 +11,24 @@ import {
 } from "@/components/ui/card";
 
 type BrowserPlayerProps = {
+  autoPlay?: boolean;
   file: LibraryFileRecord;
   error: string | null;
   initialPositionSeconds?: number | null;
   modeLabel?: string;
   onVideoError: () => void;
+  overlay?: React.ReactNode;
   src?: string;
 };
 
 export function BrowserPlayer({
+  autoPlay = false,
   file,
   error,
   initialPositionSeconds = null,
   modeLabel = "Browser player",
   onVideoError,
+  overlay,
   src,
 }: BrowserPlayerProps) {
   const lastSyncedPositionRef = useRef<number>(-1);
@@ -65,48 +69,52 @@ export function BrowserPlayer({
             {error}
           </p>
         ) : null}
-        <video
-          className="aspect-video w-full rounded-[1.5rem] bg-black"
-          controls
-          key={`${file.id}:${initialPositionSeconds ?? 0}`}
-          onEnded={(event) => {
-            void syncProgress(event.currentTarget);
-          }}
-          onError={onVideoError}
-          onLoadedMetadata={(event) => {
-            if (
-              didApplyInitialPositionRef.current ||
-              initialPositionSeconds === null ||
-              initialPositionSeconds <= 0
-            ) {
-              return;
-            }
+        <div className="relative">
+          <video
+            autoPlay={autoPlay}
+            className="aspect-video w-full rounded-[1.5rem] bg-black"
+            controls
+            key={`${file.id}:${initialPositionSeconds ?? 0}:${autoPlay ? "auto" : "manual"}`}
+            onEnded={(event) => {
+              void syncProgress(event.currentTarget);
+            }}
+            onError={onVideoError}
+            onLoadedMetadata={(event) => {
+              if (
+                didApplyInitialPositionRef.current ||
+                initialPositionSeconds === null ||
+                initialPositionSeconds <= 0
+              ) {
+                return;
+              }
 
-            const video = event.currentTarget;
-            video.currentTime = Math.min(
-              initialPositionSeconds,
-              Number.isFinite(video.duration) ? video.duration : initialPositionSeconds,
-            );
-            didApplyInitialPositionRef.current = true;
-          }}
-          onPause={(event) => {
-            void syncProgress(event.currentTarget);
-          }}
-          preload="metadata"
-          src={src ?? file.browserUrl ?? undefined}
-          onTimeUpdate={(event) => {
-            const video = event.currentTarget;
+              const video = event.currentTarget;
+              video.currentTime = Math.min(
+                initialPositionSeconds,
+                Number.isFinite(video.duration) ? video.duration : initialPositionSeconds,
+              );
+              didApplyInitialPositionRef.current = true;
+            }}
+            onPause={(event) => {
+              void syncProgress(event.currentTarget);
+            }}
+            preload="metadata"
+            src={src ?? file.browserUrl ?? undefined}
+            onTimeUpdate={(event) => {
+              const video = event.currentTarget;
 
-            if (
-              lastSyncedPositionRef.current >= 0 &&
-              video.currentTime - lastSyncedPositionRef.current < 10
-            ) {
-              return;
-            }
+              if (
+                lastSyncedPositionRef.current >= 0 &&
+                video.currentTime - lastSyncedPositionRef.current < 10
+              ) {
+                return;
+              }
 
-            void syncProgress(video);
-          }}
-        />
+              void syncProgress(video);
+            }}
+          />
+          {overlay}
+        </div>
       </CardContent>
     </Card>
   );
