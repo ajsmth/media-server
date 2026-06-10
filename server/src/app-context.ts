@@ -69,6 +69,7 @@ export async function createAppContext(config: AppConfig): Promise<AppContext> {
     mediaDir: config.mediaDir,
     indexFilePath: config.libraryIndexFile,
     parseLogFilePath: config.libraryParseLogFile,
+    watchForChanges: config.libraryWatchEnabled,
     playbackProgressProvider: (relativePath) =>
       playbackProgressService.get(relativePath),
     showGroupingOverrideResolver: (title) => showGroupingOverrideService.resolve(title),

@@ -186,6 +186,21 @@ export class LibraryCatalogService {
       const playback =
         this.options.playbackProgressProvider?.(file.relativePath) ?? file.playback;
 
+      if (file.browserCopyReady) {
+        return playback === file.playback
+          ? {
+              ...file,
+              fileProcessingProgress: null,
+              fileProcessingDetails: null,
+            }
+          : {
+              ...file,
+              fileProcessingProgress: null,
+              fileProcessingDetails: null,
+              playback,
+            };
+      }
+
       if (!liveStatus) {
         return playback === file.playback
           ? file
@@ -429,6 +444,12 @@ export class LibraryCatalogService {
     const fileProcessingStatus: FileProcessingStatus = browserCopyReady
       ? "ready"
       : fileProcessingStatusSnapshot?.state ?? "unavailable";
+    const fileProcessingProgress = browserCopyReady
+      ? null
+      : fileProcessingStatusSnapshot?.progress ?? null;
+    const fileProcessingDetails = browserCopyReady
+      ? null
+      : fileProcessingStatusSnapshot?.details ?? null;
 
     return {
       id: fileId,
@@ -440,8 +461,8 @@ export class LibraryCatalogService {
       browserUrl,
       browserCopyReady,
       fileProcessingStatus,
-      fileProcessingProgress: fileProcessingStatusSnapshot?.progress ?? null,
-      fileProcessingDetails: fileProcessingStatusSnapshot?.details ?? null,
+      fileProcessingProgress,
+      fileProcessingDetails,
       playback,
       parsed,
     };

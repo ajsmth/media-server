@@ -104,6 +104,7 @@ export class TranscoderQueueService {
         this.progressLogBuckets.delete(nextJob.relativePath);
 
         if (currentStatus) {
+          currentStatus.state = "unavailable";
           currentStatus.progress = null;
           currentStatus.details =
             error instanceof Error ? error.message : "Encoding failed";

@@ -14,6 +14,24 @@ const toNumber = (value: string | undefined, fallback: number): number => {
   return Number.isNaN(parsed) ? fallback : parsed;
 };
 
+const toBoolean = (value: string | undefined, fallback: boolean): boolean => {
+  if (!value) {
+    return fallback;
+  }
+
+  const normalized = value.trim().toLowerCase();
+
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+
+  return fallback;
+};
+
 export const config = {
   projectRoot,
   mediaDir: path.join(projectRoot, "media"),
@@ -33,9 +51,11 @@ export const config = {
   clientDistDir: path.join(projectRoot, "client", "dist"),
   openAiApiKey: process.env.OPEN_AI_API_KEY ?? process.env.OPENAI_API_KEY ?? "",
   openAiModel: process.env.OPENAI_MODEL ?? "gpt-4.1-mini",
+  serverBindHost: process.env.SERVER_BIND_HOST ?? "0.0.0.0",
   serverHost: process.env.SERVER_HOST ?? "192.168.1.75",
   playbackHost: process.env.PLAYBACK_HOST ?? process.env.SERVER_HOST ?? "192.168.1.75",
   serverPort: toNumber(process.env.SERVER_PORT, 3000),
+  libraryWatchEnabled: toBoolean(process.env.LIBRARY_WATCH_ENABLED, false),
   nebulaIp: process.env.NEBULA_IP ?? "192.168.1.76",
   adbPort: toNumber(process.env.ADB_PORT, 5555),
   vlcPackage: "org.videolan.vlc",

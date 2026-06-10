@@ -43,7 +43,7 @@ async function startServer(): Promise<void> {
   apiRouter.use("/", createPlaybackRouter(context));
   apiRouter.use("/torrents", createTorrentsRouter(context));
 
-  app.listen(config.serverPort, () => {
+  app.listen(config.serverPort, config.serverBindHost, () => {
     console.log(
       `Server running at http://${config.serverHost}:${config.serverPort}`,
     );
