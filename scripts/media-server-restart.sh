@@ -20,5 +20,15 @@ else
   launchctl kickstart -k "$SERVICE_NAME"
 fi
 
-echo "Restarted $SERVICE_NAME"
-curl -I http://127.0.0.1:3000
+echo "Waiting for $SERVICE_NAME to serve requests..."
+deadline=$((SECONDS + 60))
+while ((SECONDS < deadline)); do
+  if curl --fail --silent --show-error --head --max-time 2 http://127.0.0.1:3000 >/dev/null 2>&1; then
+    echo "Ready: http://127.0.0.1:3000"
+    exit 0
+  fi
+  sleep 1
+done
+
+echo "Server did not become ready within about 60 seconds. Check .logs/media-server.stderr.log" >&2
+exit 1

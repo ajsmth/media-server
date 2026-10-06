@@ -1,5 +1,29 @@
 # Media Server
 
+## Start the server
+
+On the Mac that hosts this repo, start or restart the background service:
+
+```sh
+cd /Users/andy/development/media-server
+./scripts/media-server-restart.sh
+```
+
+Open `http://projector.local`. Check the service and its recent logs with
+`./scripts/media-server-status.sh`.
+
+For development, run these in separate terminals from the repo root:
+
+```sh
+yarn dev:server
+```
+
+```sh
+yarn dev:client
+```
+
+Open `http://localhost:5173`.
+
 ## Local network setup
 
 The local network URL is `http://projector.local`.
